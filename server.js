@@ -102,6 +102,10 @@ app.use((_req, res, next) => {
       "connect-src 'self' https://assets.malto.icu",
       "manifest-src 'self'",
       "worker-src 'self'",
+      // The about page's demo video is the one embedded frame on the site -
+      // youtube-nocookie.com is YouTube's privacy-enhanced embed domain
+      // (no tracking cookies until playback actually starts).
+      "frame-src https://www.youtube-nocookie.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
