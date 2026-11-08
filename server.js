@@ -82,14 +82,22 @@ app.use(pinoHttp({
 // source added anywhere in the frontend fails closed until it's added here
 // too. assets.malto.icu is the one external origin, used only for the
 // logo/icon images and fonts served from a CDN separate from the app itself.
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options',     'nosniff');
   res.setHeader('X-Frame-Options',            'DENY');
   res.setHeader('X-XSS-Protection',           '0');
   res.setHeader('Referrer-Policy',            'no-referrer');
   res.setHeader('Permissions-Policy',         'camera=(), microphone=(), geolocation=(), payment=()');
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+  // COEP requires every cross-origin resource (including an <iframe>) to
+  // send a matching header back, which youtube-nocookie.com's embed does
+  // not - the demo video on /about would otherwise fail to load with
+  // ERR_BLOCKED_BY_RESPONSE. Nothing on this site needs cross-origin
+  // isolation (no SharedArrayBuffer/WASM threads), so this is safe to skip
+  // on the one page that embeds something.
+  if (req.path !== '/about') {
+    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+  }
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader(
     'Content-Security-Policy',
