@@ -985,10 +985,8 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 .about-video-wrap {
   position: relative;
   width: 100%;
-  max-width: 640px;
   aspect-ratio: 16 / 9;
-  margin: 0 auto;
-  background: #000;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
