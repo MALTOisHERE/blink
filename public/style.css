@@ -1375,6 +1375,37 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 .btn-install.hidden + .logo-sep,
 .btn-install.hidden { display: none; }
 
+.btn-github-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: .78rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color var(--transition), color var(--transition);
+}
+.btn-github-stars:hover { border-color: var(--green); color: var(--text); }
+.btn-github-stars svg { flex-shrink: 0; }
+.github-stars-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+  min-width: 14px;
+  justify-content: center;
+}
+.github-stars-count:empty { display: none; }
+@media (max-width: 700px) { .btn-github-stars span.label { display: none; } }
+
 /* ── Modals ── */
 .modal-overlay {
   position: fixed;

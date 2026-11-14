@@ -107,7 +107,9 @@ app.use((req, res, next) => {
       "style-src 'self'",
       "font-src 'self'",
       "img-src 'self' data: https://assets.malto.icu",
-      "connect-src 'self' https://assets.malto.icu",
+      // api.github.com is called client-side by github-stars.js, straight
+      // from each visitor's own browser - never through this server.
+      "connect-src 'self' https://assets.malto.icu https://api.github.com",
       "manifest-src 'self'",
       "worker-src 'self'",
       // The about page's demo video is the one embedded frame on the site -
