@@ -144,15 +144,15 @@
           <div class="process-step">
             <div class="process-step-num">8</div>
             <div class="process-step-body">
-              <div class="process-step-title">Server reconstructs and decrypts</div>
-              <div class="process-step-desc">Using K1 + K2_stored + K3 + K4, the server reconstructs K, unwraps the ciphertext, and decrypts the secret. All four factors are required; missing any one makes decryption impossible.</div>
+              <div class="process-step-title">Server verifies and releases K2 - it never decrypts</div>
+              <div class="process-step-desc">Your browser proves it holds K1 by sending SHA-256(K1), never K1 itself. If that hash matches the one recorded at creation, the server unmasks K2 and hands it back, still encrypted, and deletes the secret from memory in the same operation. The server never reconstructs K and never sees plaintext.</div>
             </div>
           </div>
           <div class="process-step">
             <div class="process-step-num">9</div>
             <div class="process-step-body">
-              <div class="process-step-title">Secret shown, deleted forever</div>
-              <div class="process-step-desc">The plaintext is returned to the browser and the secret is permanently deleted from server memory in the same atomic operation. The link is now dead forever.</div>
+              <div class="process-step-title">Browser decrypts, gone forever</div>
+              <div class="process-step-desc">With K1 (held locally) and K2 (just received), your browser reconstructs K and decrypts the secret itself. This is the only place in the whole flow where plaintext exists. The link is now dead forever.</div>
             </div>
           </div>
         </div>
@@ -181,7 +181,7 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
             <div class="security-card-title">No offline decryption</div>
-            <div class="security-card-desc">Even with the ciphertext and the URL, decryption is impossible without the server. K2, K3, and K4 never leave the server.</div>
+            <div class="security-card-desc">Even with the ciphertext and the URL, decryption is impossible without the server releasing K2 first - and it only does that after verifying your browser holds the real K1. K3 and K4 never leave the server; the server itself never decrypts anything.</div>
           </div>
           <div class="security-card">
             <div class="security-card-icon">
@@ -321,7 +321,7 @@
               Can Blink read my secret?
               <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div class="faq-a"><div>No. Your secret is encrypted in your browser before anything is sent to the server. The server only ever sees ciphertext, never plaintext. Even if the server were compromised, the attacker would need all four cryptographic keys to decrypt anything. And even if we somehow could read your secret, we would have no idea who sent it: no accounts, no names, no identity.</div></div>
+            <div class="faq-a"><div>No. Your secret is encrypted and decrypted entirely in the browser - yours when you create it, the recipient's when they open it. The server never performs the decryption itself and never has the complete key: even a fully compromised server (a database dump, a backend exploit) only ever holds ciphertext and key <em>halves</em>, never enough to read a secret. And even if we somehow could read your secret, we would have no idea who sent it: no accounts, no names, no identity.</div></div>
           </div>
 
           <div class="faq-item">
@@ -329,7 +329,7 @@
               How does the four-factor key work?
               <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div class="faq-a"><div>The AES-256 key K is split: K1 goes in the URL fragment (never sent to the server), K2 is sent to the server but masked with HMAC(K3) before storage, and the ciphertext is re-encrypted with K4. K3 and K4 are permanent server environment variables that never travel anywhere. All four are required to reconstruct K and decrypt.</div></div>
+            <div class="faq-a"><div>The AES-256 key K is split: K1 goes in the URL fragment and never crosses the network at all (only a one-way hash of it, SHA-256(K1), is ever sent, so the server can verify a reveal request without ever possessing K1). K2 is sent to the server but masked with HMAC(K3) before storage. The ciphertext is re-encrypted with K4. K3 and K4 are permanent server environment variables that never travel anywhere. At reveal, the server checks the K1 hash and, if it matches, releases K2 and the ciphertext - still encrypted - to the recipient's browser, which combines K1 and K2 into K and decrypts locally. The server itself never reconstructs K and never decrypts.</div></div>
           </div>
 
           <div class="faq-item">

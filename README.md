@@ -21,7 +21,7 @@ Blink is a self-hosted, end-to-end encrypted secret sharing app. Paste a passwor
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/MALTOisHERE/onlyonce/main/.docs/architecture-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/MALTOisHERE/onlyonce/main/.docs/architecture-light.png">
-    <img alt="Blink architecture: browser encrypts and splits the key into K1/K2, the server masks K2 with K3 and wraps the ciphertext with K4 for storage, and on reveal the server reconstructs K, decrypts, returns the plaintext once, then deletes the secret" src="https://raw.githubusercontent.com/MALTOisHERE/onlyonce/main/.docs/architecture-light.png">
+    <img alt="Blink architecture: browser encrypts and splits the key into K1/K2, sending only a SHA-256 hash of K1 (never K1 itself) alongside K2 to the server, which masks K2 with K3 and wraps the ciphertext with K4 for storage. On reveal, the server checks the K1 hash and releases K2 and the ciphertext without ever decrypting, then deletes the secret; the recipient's browser reconstructs K and decrypts locally" src="https://raw.githubusercontent.com/MALTOisHERE/onlyonce/main/.docs/architecture-light.png">
   </picture>
 </a>
 
