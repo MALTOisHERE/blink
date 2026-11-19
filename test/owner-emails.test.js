@@ -49,6 +49,7 @@ describe('OWNER_EMAILS allowlist', () => {
       ciphertext: Buffer.concat([enc, tag]).toString('base64'),
       iv: iv.toString('base64'),
       k2: k2.toString('base64'),
+      k1Hash: crypto.createHash('sha256').update(k1).digest('base64'),
       passphrase: 'owner-passphrase',
     });
     assert.equal(res.status, 201);

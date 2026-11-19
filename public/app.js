@@ -378,6 +378,16 @@
     return btoa(str);
   }
 
+  // SHA-256(K1), sent to the server at creation so it can later verify a
+  // reveal request holds the real K1 without ever seeing K1 itself (a hash
+  // can't be reversed back into it) — see server.js's hashK1()/unmaskK2()
+  // for the full reasoning. The server only ever gets this one-way hash,
+  // never K1, at creation or at reveal.
+  async function hashK1(k1) {
+    const digest = await crypto.subtle.digest('SHA-256', k1);
+    return toB64(new Uint8Array(digest));
+  }
+
   async function encryptSecret(text) {
     const encoded = new TextEncoder().encode(text);
     if (encoded.length > MAX_SECRET_BYTES) {
@@ -401,6 +411,7 @@
       iv:         toB64(iv),
       k1:         toB64(k1),
       k2:         toB64(k2),
+      k1Hash:     await hashK1(k1),
     };
   }
 
@@ -420,6 +431,7 @@
       iv:         toB64(iv),
       k1:         toB64(k1),
       k2:         toB64(k2),
+      k1Hash:     await hashK1(k1),
     };
   }
 
@@ -634,13 +646,13 @@
     btnCreate.textContent = 'Encrypting…';
 
     try {
-      const { ciphertext, iv, k1, k2 } = fileToEncrypt
+      const { ciphertext, iv, k1, k2, k1Hash } = fileToEncrypt
         ? await encryptFile(fileToEncrypt)
         : await encryptSecret(secret);
 
       const expiresIn = parseInt(document.querySelector('input[name="expiry"]:checked').value, 10);
 
-      const payload = { ciphertext, iv, k2, expiresIn };
+      const payload = { ciphertext, iv, k2, k1Hash, expiresIn };
       if (recipientEmail) payload.recipientEmail = recipientEmail;
       if (fileToEncrypt) {
         payload.isFile   = true;

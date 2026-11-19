@@ -1,12 +1,51 @@
 // ── View page: reveal flow ───────────────────────────────────────────────────
 // Drives view.html, the page a recipient lands on from a shared link. Reads
-// K1 from the URL fragment (never sent in a request body), calls
-// GET /api/secret/:id with it, and walks through whatever the server asks
-// for next - a passphrase, an email OTP, or straight to the decrypted
-// plaintext/file - showing the matching UI state at each step.
+// K1 from the URL fragment and keeps it local - only its SHA-256 hash is
+// ever sent to the server, never K1 itself (see hashK1() below). Calls
+// GET /api/secret/:id, walks through whatever the server asks for next (a
+// passphrase, an email OTP), and once it releases K2, decrypts entirely
+// client-side via clientDecrypt() - the server never sees the plaintext.
 (() => {
   const UUID_RE  = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const K1_B64_RE = /^[A-Za-z0-9+/]{43}=$/;
+
+  function fromB64(str) {
+    const bin = atob(str);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+
+  function toB64(bytes) {
+    let str = '';
+    for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+    return btoa(str);
+  }
+
+  // SHA-256(K1) — sent to the server instead of K1 itself, so K1 never
+  // crosses the network at all. Mirrors app.js's hashK1() at creation; the
+  // server just compares the two hashes directly, never seeing K1.
+  async function hashK1(k1B64) {
+    const digest = await crypto.subtle.digest('SHA-256', fromB64(k1B64));
+    return toB64(new Uint8Array(digest));
+  }
+
+  // The actual decrypt — this is the one place in the whole app where a
+  // secret's plaintext comes into existence, and it happens here, in the
+  // recipient's own browser, not on the server. The server only ever hands
+  // back ciphertext and K2; K1 never left this browser (see init() below).
+  // K = K1 XOR K2, same as the split performed at creation in app.js.
+  async function clientDecrypt(ciphertextB64, ivB64, k1B64, k2B64) {
+    const k1 = fromB64(k1B64);
+    const k2 = fromB64(k2B64);
+    const keyBytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) keyBytes[i] = k1[i] ^ k2[i];
+    const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
+    const iv  = fromB64(ivB64);
+    const ctWithTag = fromB64(ciphertextB64);
+    const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ctWithTag);
+    return new Uint8Array(plainBuf);
+  }
 
   function setState(id) {
     document.querySelectorAll('.view-state').forEach(el => { el.classList.remove('active'); });
@@ -23,7 +62,7 @@
     return `Can still be viewed ${viewsLeft} more time${viewsLeft === 1 ? '' : 's'} before it is destroyed`;
   }
 
-  function showFile(dataB64, filename, mimetype, viewsLeft = 0) {
+  function showFile(bytes, filename, mimetype, viewsLeft = 0) {
     document.getElementById('file-reveal-name').textContent = filename;
     if (viewsLeft > 0) {
       document.getElementById('file-notice-text').textContent = viewsLeftLabel(viewsLeft);
@@ -31,10 +70,7 @@
     setState('state-file');
 
     document.getElementById('btn-download-file').onclick = () => {
-      const bytes = atob(dataB64);
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      const blob = new Blob([arr], { type: mimetype });
+      const blob = new Blob([bytes], { type: mimetype });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -76,7 +112,7 @@
 
   async function revealSecret(id, k1B64, auth = {}, onDone = null) {
     try {
-      const headers = { 'X-Key': k1B64 };
+      const headers = { 'X-Key-Hash': await hashK1(k1B64) };
       if (auth.otp)        headers['X-OTP']        = auth.otp;
       if (auth.passphrase) headers['X-Passphrase'] = encodeURIComponent(auth.passphrase);
       const res = await fetch(`/api/secret/${id}`, { headers });
@@ -143,10 +179,15 @@
       const data = await res.json();
       const viewsLeft = typeof data.viewsLeft === 'number' ? data.viewsLeft : 0;
       if (viewsLeft <= 0) onDone?.();
-      if (data.data !== undefined) {
-        showFile(data.data, data.filename, data.mimetype, viewsLeft);
+
+      // The server already verified this request holds the real K1 (that's
+      // what let it release K2 at all) - decrypt happens here, client-side,
+      // never on the server. See clientDecrypt() above.
+      const plainBytes = await clientDecrypt(data.ciphertext, data.iv, k1B64, data.k2);
+      if (data.isFile) {
+        showFile(plainBytes, data.filename, data.mimetype, viewsLeft);
       } else {
-        showSecret(data.plaintext, viewsLeft);
+        showSecret(new TextDecoder().decode(plainBytes), viewsLeft);
       }
     } catch (err) {
       console.error('[Blink] failed to reveal secret:', err);

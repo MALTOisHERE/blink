@@ -5,8 +5,11 @@
 // secrets, the optional passphrase/email-OTP gates on a reveal, Pro
 // licensing (Lemon Squeezy) behind Google/GitHub sign-in, rate limiting, and
 // the in-memory store with graceful-restart snapshotting. See the README's
-// "Key architecture" section for the K1-K4 encryption model this file
-// implements; this is the only place K3/K4 and the license store live.
+// "Key architecture" section for the K1-K4 model this file implements; this
+// is the only place K3/K4 and the license store live. AES-GCM decryption
+// itself never happens here, on purpose - this server only ever sees
+// ciphertext and key *halves*, never the complete key or any plaintext; see
+// unmaskK2() below and clientDecrypt() in public/view.js.
 
 const express      = require('express');
 const crypto       = require('node:crypto');
@@ -780,7 +783,9 @@ const B64_RE   = /^[A-Za-z0-9+/]+=*$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // AES-GCM IV must be 12 raw bytes → exactly 16 base-64 chars
 const IV_B64_LEN  = 16;
-// AES-256 key half (32 bytes) → exactly 44 base-64 chars
+// AES-256 key half (32 bytes) → exactly 44 base-64 chars. A SHA-256 digest
+// (K1's hash, sent at both creation and reveal - K1 itself never crosses
+// the network) is also 32 bytes, so this length applies to both.
 const K2_B64_LEN  = 44;
 // AES-GCM output is always at least 16-byte auth tag → min 24 base-64 chars
 const MIN_CT_LEN      = 24;
@@ -834,28 +839,25 @@ function decryptWithK4(encCtB64, ctIvB64) {
 // ── Email client ─────────────────────────────────────────────────────────────
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-// ── Server-side decrypt ──────────────────────────────────────────────────────
-// K = K1 XOR K2. K1 comes from client (URL fragment), K2 stored masked with K3.
-// K2_stored = K2 XOR HMAC(K3, id) at creation time.
-// At reveal: key = K1 XOR K2_stored XOR HMAC(K3, id) = K1 XOR K2.
-// Web Crypto AES-GCM output = ciphertext || 16-byte auth tag.
-function serverDecrypt(ciphertextB64, ivB64, k1B64, k2StoredB64, id, raw = false) {
-  const ct       = Buffer.from(ciphertextB64, 'base64');
-  const iv       = Buffer.from(ivB64,         'base64');
-  const k1       = Buffer.from(k1B64,         'base64');
-  const k2Stored = Buffer.from(k2StoredB64,   'base64');
+// ── Reveal-time key release (true end-to-end: server never decrypts) ───────
+// The server never reconstructs K = K1 XOR K2 and never touches plaintext -
+// AES-GCM decryption happens exclusively in the recipient's browser (see
+// clientDecrypt() in public/view.js). This function's only job is deciding
+// whether to release K2 at all: K2_stored = K2 XOR HMAC(K3, id) at creation
+// time, so unmaskK2() reverses that (XOR is self-inverse) to recover the
+// plain K2, which is still useless on its own without K1.
+//
+// K1 itself NEVER crosses the network at all, at creation or at reveal -
+// the browser sends only SHA-256(K1) at creation (stored as secret.k1Hash)
+// and again at reveal (via the X-Key-Hash header, compared directly
+// against the stored one). A match proves the caller holds the real K1
+// without the server ever needing to see, possess, or combine it with K2.
+function unmaskK2(k2StoredB64, id) {
+  const k2Stored = Buffer.from(k2StoredB64, 'base64');
   const mask     = K3 ? deriveK3Mask(id) : Buffer.alloc(32);
-
-  const key = Buffer.alloc(32);
-  for (let i = 0; i < 32; i++) key[i] = k1[i] ^ k2Stored[i] ^ mask[i];
-
-  const authTag    = ct.subarray(ct.length - 16);
-  const ciphertext = ct.subarray(0, ct.length - 16);
-
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
-  const result = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  return raw ? result : result.toString('utf8');
+  const k2 = Buffer.alloc(32);
+  for (let i = 0; i < 32; i++) k2[i] = k2Stored[i] ^ mask[i];
+  return k2.toString('base64');
 }
 
 // ── Email (Resend) ───────────────────────────────────────────────────────────
@@ -1088,7 +1090,7 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
   }
 
   const {
-    ciphertext, iv, k2, recipientEmail, expiresIn: expiresInRaw,
+    ciphertext, iv, k2, k1Hash, recipientEmail, expiresIn: expiresInRaw,
     isFile, filename: rawFilename, mimetype: rawMimetype,
     views: viewsRaw, passphrase: passphraseRaw, notifyEmail: notifyEmailRaw,
   } = body;
@@ -1118,11 +1120,12 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
     : MAX_CT_LEN;
 
   if (
-    typeof ciphertext !== 'string' || typeof iv !== 'string' || typeof k2 !== 'string' ||
-    !ciphertext || !iv || !k2 ||
-    !B64_RE.test(iv) || !B64_RE.test(ciphertext) || !B64_RE.test(k2) ||
+    typeof ciphertext !== 'string' || typeof iv !== 'string' || typeof k2 !== 'string' || typeof k1Hash !== 'string' ||
+    !ciphertext || !iv || !k2 || !k1Hash ||
+    !B64_RE.test(iv) || !B64_RE.test(ciphertext) || !B64_RE.test(k2) || !B64_RE.test(k1Hash) ||
     iv.length !== IV_B64_LEN ||
     k2.length !== K2_B64_LEN ||
+    k1Hash.length !== K2_B64_LEN ||
     ciphertext.length < MIN_CT_LEN ||
     ciphertext.length > maxCtLen
   ) {
@@ -1251,7 +1254,7 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
   const filename = isFileSecret ? rawFilename.trim() : null;
   const mimetype = isFileSecret ? rawMimetype.trim() : null;
   secrets.set(id, {
-    ciphertext: storedCt, ctIv, iv, k2: k2Stored, expiresAt,
+    ciphertext: storedCt, ctIv, iv, k2: k2Stored, k1Hash, expiresAt,
     otpHash, otpAttempts: 0,
     isFile: isFileSecret, filename, mimetype,
     viewsLeft: viewsAllowed,
@@ -1287,8 +1290,11 @@ app.get('/api/secret/:id', readLimiter.middleware(), (req, res) => {
     return res.status(400).json({ error: 'Invalid identifier.' });
   }
 
-  const k1B64 = (req.headers['x-key'] || '').trim();
-  if (!k1B64 || k1B64.length !== K2_B64_LEN || !B64_RE.test(k1B64)) {
+  // This is SHA-256(K1), not K1 itself - K1 never crosses the network at
+  // all, at creation or at reveal, only this one-way hash of it does. See
+  // the big comment above unmaskK2() for the full reasoning.
+  const k1HashHeader = (req.headers['x-key-hash'] || '').trim();
+  if (!k1HashHeader || k1HashHeader.length !== K2_B64_LEN || !B64_RE.test(k1HashHeader)) {
     return res.status(400).json({ error: 'Missing or invalid key.' });
   }
 
@@ -1363,39 +1369,61 @@ app.get('/api/secret/:id', readLimiter.middleware(), (req, res) => {
     }
   }
 
-  // Reconstruct key, decrypt, consume one view
-  try {
-    const rawCt = (K4 && secret.ctIv) ? decryptWithK4(secret.ciphertext, secret.ctIv) : secret.ciphertext;
-
-    let payload;
-    if (secret.isFile) {
-      const fileBuf = serverDecrypt(rawCt, secret.iv, k1B64, secret.k2, id, true);
-      payload = { data: fileBuf.toString('base64'), filename: secret.filename, mimetype: secret.mimetype };
-    } else {
-      payload = { plaintext: serverDecrypt(rawCt, secret.iv, k1B64, secret.k2, id) };
-    }
-
-    // Multi-view (Pro): only destroy once all allowed views are consumed
-    secret.viewsLeft = (secret.viewsLeft ?? 1) - 1;
-    const viewsLeft = secret.viewsLeft;
-    if (viewsLeft <= 0) {
-      secrets.delete(id);
-    }
-    stats.secretsRevealed++;
-    req.log.info({ secretId: idFragment(id), viewsLeft, destroyed: viewsLeft <= 0 }, 'secret viewed');
-
-    if (secret.notifyEmail && resendClient) {
-      sendViewNotification(secret.notifyEmail, viewsLeft, id)
-        .then(() => { stats.emailsSent++; })
-        .catch(err => req.log.error({ err, secretId: idFragment(id) }, 'failed to send view notification email'));
-    }
-
-    payload.viewsLeft = viewsLeft;
-    res.json(payload);
-  } catch (err) {
-    req.log.warn({ err, secretId: idFragment(id) }, 'secret decryption failed');
-    return res.status(400).json({ error: 'Decryption failed. The link may be corrupted.' });
+  // A secret created by a server process from before this field existed
+  // (restored from a graceful-restart snapshot across a deploy) has no
+  // k1Hash to check against - treat it the same as "gone" rather than
+  // crash on a missing field.
+  if (!secret.k1Hash) {
+    secrets.delete(id);
+    req.log.warn({ secretId: idFragment(id) }, 'secret predates k1Hash support, discarding');
+    return res.status(410).json({ error: 'expired' });
   }
+
+  // Verify the caller holds the real K1 - purely by comparing the supplied
+  // hash to the one recorded at creation, no decrypt attempt, no K1 or K
+  // ever constructed - before releasing anything or burning a view. See
+  // the big comment above unmaskK2() for why this is enough.
+  const suppliedHash = Buffer.from(k1HashHeader, 'base64');
+  const storedHash   = Buffer.from(secret.k1Hash, 'base64');
+  if (suppliedHash.length !== storedHash.length || !crypto.timingSafeEqual(suppliedHash, storedHash)) {
+    req.log.warn({ secretId: idFragment(id) }, 'reveal rejected: wrong key');
+    return res.status(400).json({ error: 'Invalid key. The link may be corrupted.' });
+  }
+
+  // Unwrap ciphertext from K4 and unmask K2 from K3 - both are server-only
+  // at-rest protections, unrelated to the AES-GCM key itself. The actual
+  // decrypt happens only in the recipient's browser, which already holds
+  // K1 and now receives K2 to combine with it.
+  let rawCt;
+  try {
+    rawCt = (K4 && secret.ctIv) ? decryptWithK4(secret.ciphertext, secret.ctIv) : secret.ciphertext;
+  } catch (err) {
+    req.log.error({ err, secretId: idFragment(id) }, 'failed to unwrap stored ciphertext');
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+  const k2 = unmaskK2(secret.k2, id);
+
+  const payload = secret.isFile
+    ? { ciphertext: rawCt, iv: secret.iv, k2, isFile: true, filename: secret.filename, mimetype: secret.mimetype }
+    : { ciphertext: rawCt, iv: secret.iv, k2, isFile: false };
+
+  // Multi-view (Pro): only destroy once all allowed views are consumed
+  secret.viewsLeft = (secret.viewsLeft ?? 1) - 1;
+  const viewsLeft = secret.viewsLeft;
+  if (viewsLeft <= 0) {
+    secrets.delete(id);
+  }
+  stats.secretsRevealed++;
+  req.log.info({ secretId: idFragment(id), viewsLeft, destroyed: viewsLeft <= 0 }, 'secret viewed');
+
+  if (secret.notifyEmail && resendClient) {
+    sendViewNotification(secret.notifyEmail, viewsLeft, id)
+      .then(() => { stats.emailsSent++; })
+      .catch(err => req.log.error({ err, secretId: idFragment(id) }, 'failed to send view notification email'));
+  }
+
+  payload.viewsLeft = viewsLeft;
+  res.json(payload);
 });
 
 // ── GET /api/config ──────────────────────────────────────────────────────────

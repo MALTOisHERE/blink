@@ -79,11 +79,11 @@
   // blinkCreateLink() (crypto.js) hardcodes the site's 48h default; the
   // popup lets the user pick, so swap the body's expiresIn after encrypting.
   async function blinkCreateLinkWithTtl(text, ttlHours) {
-    const { ciphertext, iv, k1, k2 } = await blinkEncryptSecret(text);
+    const { ciphertext, iv, k1, k2, k1Hash } = await blinkEncryptSecret(text);
     const resp = await fetch(`${BLINK_API_BASE}/api/secret`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ ciphertext, iv, k2, expiresIn: parseInt(ttlHours, 10) }),
+      body:    JSON.stringify({ ciphertext, iv, k2, k1Hash, expiresIn: parseInt(ttlHours, 10) }),
     });
     if (!resp.ok) {
       if (resp.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');

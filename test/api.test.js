@@ -20,6 +20,17 @@ const crypto             = require('node:crypto');
 const request            = require('supertest');
 const { app }            = require('../server');
 
+function sha256B64(buf) {
+  return crypto.createHash('sha256').update(buf).digest('base64');
+}
+
+// SHA-256(K1) as a base64 string - what's actually sent in X-Key-Hash,
+// since K1 itself never crosses the network. Callers that only have a k1
+// base64 string (not the full makePayload() result) use this directly.
+function hashK1Header(k1B64) {
+  return sha256B64(Buffer.from(k1B64, 'base64'));
+}
+
 // Build a valid AES-256-GCM payload matching what the browser sends
 function makePayload(plaintext = 'test secret value') {
   const key = crypto.randomBytes(32);
@@ -37,10 +48,27 @@ function makePayload(plaintext = 'test secret value') {
       ciphertext: Buffer.concat([enc, tag]).toString('base64'),
       iv:         iv.toString('base64'),
       k2:         k2.toString('base64'),
+      k1Hash:     sha256B64(k1),
     },
     k1: k1.toString('base64'),
     plaintext,
   };
+}
+
+// Mirrors clientDecrypt() in public/view.js - the server never decrypts,
+// so tests reveal a secret and then do this themselves, same as a real
+// recipient's browser would, to verify the full round trip actually works.
+function clientDecrypt(ciphertextB64, ivB64, k1B64, k2B64) {
+  const k1  = Buffer.from(k1B64, 'base64');
+  const k2  = Buffer.from(k2B64, 'base64');
+  const key = Buffer.alloc(32);
+  for (let i = 0; i < 32; i++) key[i] = k1[i] ^ k2[i];
+  const ctWithTag = Buffer.from(ciphertextB64, 'base64');
+  const tag = ctWithTag.subarray(ctWithTag.length - 16);
+  const ct  = ctWithTag.subarray(0, ctWithTag.length - 16);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
 }
 
 describe('POST /api/secret', () => {
@@ -91,25 +119,25 @@ describe('POST /api/secret', () => {
 
 describe('GET /api/secret/:id', () => {
   test('returns 400 for a non-UUID id', async () => {
-    const key = Buffer.alloc(32).toString('base64');
-    const res = await request(app).get('/api/secret/not-a-uuid').set('X-Key', key);
+    const key = hashK1Header(Buffer.alloc(32).toString('base64'));
+    const res = await request(app).get('/api/secret/not-a-uuid').set('X-Key-Hash', key);
     assert.equal(res.status, 400);
   });
 
-  test('returns 400 when the X-Key header is missing', async () => {
+  test('returns 400 when the X-Key-Hash header is missing', async () => {
     const res = await request(app).get('/api/secret/00000000-0000-4000-8000-000000000000');
     assert.equal(res.status, 400);
   });
 
   test('returns 404 for an unknown id', async () => {
-    const key = Buffer.alloc(32).toString('base64');
+    const key = hashK1Header(Buffer.alloc(32).toString('base64'));
     const res = await request(app)
       .get('/api/secret/00000000-0000-4000-8000-000000000000')
-      .set('X-Key', key);
+      .set('X-Key-Hash', key);
     assert.equal(res.status, 404);
   });
 
-  test('full create then reveal flow decrypts plaintext correctly', async () => {
+  test('full create then reveal flow decrypts plaintext correctly, client-side', async () => {
     const { payload, k1, plaintext } = makePayload('super secret password 123!');
 
     const createRes = await request(app).post('/api/secret').send(payload);
@@ -117,9 +145,12 @@ describe('GET /api/secret/:id', () => {
 
     const revealRes = await request(app)
       .get(`/api/secret/${createRes.body.id}`)
-      .set('X-Key', k1);
+      .set('X-Key-Hash', hashK1Header(k1));
     assert.equal(revealRes.status, 200);
-    assert.equal(revealRes.body.plaintext, plaintext);
+    // The server never returns plaintext - only ciphertext/iv/k2, which the
+    // recipient's browser (simulated here) combines with K1 to decrypt.
+    assert.equal(typeof revealRes.body.plaintext, 'undefined');
+    assert.equal(clientDecrypt(revealRes.body.ciphertext, revealRes.body.iv, k1, revealRes.body.k2), plaintext);
   });
 
   test('secret is deleted after the first reveal (view once)', async () => {
@@ -129,10 +160,10 @@ describe('GET /api/secret/:id', () => {
     assert.equal(createRes.status, 201);
     const { id } = createRes.body;
 
-    const first = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+    const first = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
     assert.equal(first.status, 200);
 
-    const second = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+    const second = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
     assert.equal(second.status, 404);
   });
 
@@ -144,8 +175,8 @@ describe('GET /api/secret/:id', () => {
     const wrongKey = crypto.randomBytes(32).toString('base64');
     const res = await request(app)
       .get(`/api/secret/${createRes.body.id}`)
-      .set('X-Key', wrongKey);
-    assert.equal(res.status, 400); // decryption fails
+      .set('X-Key-Hash', hashK1Header(wrongKey));
+    assert.equal(res.status, 400); // key hash doesn't match
   });
 });
 

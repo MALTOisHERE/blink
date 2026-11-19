@@ -13,6 +13,13 @@ function blinkToB64(arr) {
   return btoa(str);
 }
 
+// SHA-256(K1) - see server.js's hashK1()/unmaskK2() comment. The server
+// only ever gets this one-way hash, never K1 itself, at creation or reveal.
+async function blinkHashK1(k1) {
+  const digest = await crypto.subtle.digest('SHA-256', k1);
+  return blinkToB64(new Uint8Array(digest));
+}
+
 async function blinkEncryptSecret(text) {
   const encoded = new TextEncoder().encode(text);
   if (encoded.length > BLINK_MAX_SECRET_BYTES) {
@@ -37,15 +44,16 @@ async function blinkEncryptSecret(text) {
     iv:         blinkToB64(iv),
     k1:         blinkToB64(k1),
     k2:         blinkToB64(k2),
+    k1Hash:     await blinkHashK1(k1),
   };
 }
 
 async function blinkCreateLink(text, ttlHours = BLINK_DEFAULT_TTL_HOURS) {
-  const { ciphertext, iv, k1, k2 } = await blinkEncryptSecret(text);
+  const { ciphertext, iv, k1, k2, k1Hash } = await blinkEncryptSecret(text);
   const resp = await fetch(`${BLINK_API_BASE}/api/secret`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ ciphertext, iv, k2, expiresIn: ttlHours }),
+    body:    JSON.stringify({ ciphertext, iv, k2, k1Hash, expiresIn: ttlHours }),
   });
   if (!resp.ok) {
     if (resp.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');

@@ -40,6 +40,14 @@ function cleanupSnapshotFiles() {
 }
 after(cleanupSnapshotFiles);
 
+function sha256B64(buf) {
+  return crypto.createHash('sha256').update(buf).digest('base64');
+}
+
+function hashK1Header(k1B64) {
+  return sha256B64(Buffer.from(k1B64, 'base64'));
+}
+
 function makePayload(plaintext = 'test secret value') {
   const key = crypto.randomBytes(32);
   const iv  = crypto.randomBytes(12);
@@ -56,10 +64,25 @@ function makePayload(plaintext = 'test secret value') {
       ciphertext: Buffer.concat([enc, tag]).toString('base64'),
       iv:         iv.toString('base64'),
       k2:         k2.toString('base64'),
+      k1Hash:     sha256B64(k1),
     },
     k1: k1.toString('base64'),
     plaintext,
   };
+}
+
+// Mirrors clientDecrypt() in public/view.js - the server never decrypts.
+function clientDecrypt(ciphertextB64, ivB64, k1B64, k2B64) {
+  const k1  = Buffer.from(k1B64, 'base64');
+  const k2  = Buffer.from(k2B64, 'base64');
+  const key = Buffer.alloc(32);
+  for (let i = 0; i < 32; i++) key[i] = k1[i] ^ k2[i];
+  const ctWithTag = Buffer.from(ciphertextB64, 'base64');
+  const tag = ctWithTag.subarray(ctWithTag.length - 16);
+  const ct  = ctWithTag.subarray(0, ctWithTag.length - 16);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
 }
 
 describe('Graceful-restart snapshot', () => {
@@ -101,9 +124,9 @@ describe('Graceful-restart snapshot', () => {
     assert.ok(!fs.existsSync(RATE_LIMITS_SNAPSHOT_FILE), 'rate-limits snapshot should be consumed after loading');
 
     // The pending secret survived and still decrypts correctly.
-    const revealRes = await request(after_.app).get(`/api/secret/${id}`).set('X-Key', k1);
+    const revealRes = await request(after_.app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
     assert.equal(revealRes.status, 200);
-    assert.equal(revealRes.body.plaintext, plaintext);
+    assert.equal(clientDecrypt(revealRes.body.ciphertext, revealRes.body.iv, k1, revealRes.body.k2), plaintext);
 
     // The free-tier count (2 used, limit 2) carried over, not reset to 0 -
     // a 3rd create should be rejected immediately on the restored process.

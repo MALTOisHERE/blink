@@ -25,6 +25,14 @@ const { app }                  = require('../server');
 
 after(() => { try { fs.unlinkSync(process.env.LICENSES_FILE); } catch {} });
 
+function sha256B64(buf) {
+  return crypto.createHash('sha256').update(buf).digest('base64');
+}
+
+function hashK1Header(k1B64) {
+  return sha256B64(Buffer.from(k1B64, 'base64'));
+}
+
 function makePayload(plaintext = 'test secret value') {
   const key = crypto.randomBytes(32);
   const iv  = crypto.randomBytes(12);
@@ -41,10 +49,25 @@ function makePayload(plaintext = 'test secret value') {
       ciphertext: Buffer.concat([enc, tag]).toString('base64'),
       iv:         iv.toString('base64'),
       k2:         k2.toString('base64'),
+      k1Hash:     sha256B64(k1),
     },
     k1: k1.toString('base64'),
     plaintext,
   };
+}
+
+// Mirrors clientDecrypt() in public/view.js - the server never decrypts.
+function clientDecrypt(ciphertextB64, ivB64, k1B64, k2B64) {
+  const k1  = Buffer.from(k1B64, 'base64');
+  const k2  = Buffer.from(k2B64, 'base64');
+  const key = Buffer.alloc(32);
+  for (let i = 0; i < 32; i++) key[i] = k1[i] ^ k2[i];
+  const ctWithTag = Buffer.from(ciphertextB64, 'base64');
+  const tag = ctWithTag.subarray(ctWithTag.length - 16);
+  const ct  = ctWithTag.subarray(0, ctWithTag.length - 16);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
 }
 
 describe('POST /api/license/activate', () => {
@@ -175,14 +198,14 @@ describe('Pro-gated secret features', () => {
       const { id } = createRes.body;
 
       // Missing passphrase entirely
-      const missing = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+      const missing = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
       assert.equal(missing.status, 403);
       assert.equal(missing.body.error, 'passphrase_required');
 
       // Wrong passphrase
       const wrong = await request(app)
         .get(`/api/secret/${id}`)
-        .set('X-Key', k1)
+        .set('X-Key-Hash', hashK1Header(k1))
         .set('X-Passphrase', 'nope');
       assert.equal(wrong.status, 403);
       assert.equal(wrong.body.error, 'invalid_passphrase');
@@ -191,10 +214,10 @@ describe('Pro-gated secret features', () => {
       // Correct passphrase
       const right = await request(app)
         .get(`/api/secret/${id}`)
-        .set('X-Key', k1)
+        .set('X-Key-Hash', hashK1Header(k1))
         .set('X-Passphrase', 'correct horse');
       assert.equal(right.status, 200);
-      assert.equal(right.body.plaintext, plaintext);
+      assert.equal(clientDecrypt(right.body.ciphertext, right.body.iv, k1, right.body.k2), plaintext);
     });
 
     test('destroys the secret after 5 wrong passphrase attempts', async () => {
@@ -207,7 +230,7 @@ describe('Pro-gated secret features', () => {
       for (let i = 0; i < 5; i++) {
         last = await request(app)
           .get(`/api/secret/${id}`)
-          .set('X-Key', k1)
+          .set('X-Key-Hash', hashK1Header(k1))
           .set('X-Passphrase', 'wrong');
       }
       assert.equal(last.status, 410);
@@ -216,7 +239,7 @@ describe('Pro-gated secret features', () => {
       // Secret is gone even with the right passphrase now
       const after = await request(app)
         .get(`/api/secret/${id}`)
-        .set('X-Key', k1)
+        .set('X-Key-Hash', hashK1Header(k1))
         .set('X-Passphrase', 'correct horse');
       assert.equal(after.status, 404);
     });
@@ -229,20 +252,20 @@ describe('Pro-gated secret features', () => {
       const createRes = await agent.post('/api/secret').send({ ...payload, views: 3 });
       const { id } = createRes.body;
 
-      const first = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+      const first = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
       assert.equal(first.status, 200);
-      assert.equal(first.body.plaintext, plaintext);
+      assert.equal(clientDecrypt(first.body.ciphertext, first.body.iv, k1, first.body.k2), plaintext);
       assert.equal(first.body.viewsLeft, 2);
 
-      const second = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+      const second = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
       assert.equal(second.status, 200);
       assert.equal(second.body.viewsLeft, 1);
 
-      const third = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+      const third = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
       assert.equal(third.status, 200);
       assert.equal(third.body.viewsLeft, 0);
 
-      const fourth = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+      const fourth = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
       assert.equal(fourth.status, 404);
     });
   });

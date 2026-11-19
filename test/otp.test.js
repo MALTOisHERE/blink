@@ -44,6 +44,14 @@ const { app }                  = require('../server');
 
 after(() => { mockResend.close(); });
 
+function sha256B64(buf) {
+  return crypto.createHash('sha256').update(buf).digest('base64');
+}
+
+function hashK1Header(k1B64) {
+  return sha256B64(Buffer.from(k1B64, 'base64'));
+}
+
 function makePayload(plaintext = 'test secret value') {
   const key = crypto.randomBytes(32);
   const iv  = crypto.randomBytes(12);
@@ -60,10 +68,25 @@ function makePayload(plaintext = 'test secret value') {
       ciphertext: Buffer.concat([enc, tag]).toString('base64'),
       iv:         iv.toString('base64'),
       k2:         k2.toString('base64'),
+      k1Hash:     sha256B64(k1),
     },
     k1: k1.toString('base64'),
     plaintext,
   };
+}
+
+// Mirrors clientDecrypt() in public/view.js - the server never decrypts.
+function clientDecrypt(ciphertextB64, ivB64, k1B64, k2B64) {
+  const k1  = Buffer.from(k1B64, 'base64');
+  const k2  = Buffer.from(k2B64, 'base64');
+  const key = Buffer.alloc(32);
+  for (let i = 0; i < 32; i++) key[i] = k1[i] ^ k2[i];
+  const ctWithTag = Buffer.from(ciphertextB64, 'base64');
+  const tag = ctWithTag.subarray(ctWithTag.length - 16);
+  const ct  = ctWithTag.subarray(0, ctWithTag.length - 16);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
 }
 
 describe('Email OTP: creation', () => {
@@ -89,9 +112,9 @@ describe('Email OTP: reveal', () => {
     assert.ok(/^\d{6}$/.test(lastOtpSent), 'mock Resend server should have captured a 6-digit OTP');
     const { id } = createRes.body;
 
-    const res = await request(app).get(`/api/secret/${id}`).set('X-Key', k1).set('X-Otp', lastOtpSent);
+    const res = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1)).set('X-Otp', lastOtpSent);
     assert.equal(res.status, 200);
-    assert.equal(res.body.plaintext, plaintext);
+    assert.equal(clientDecrypt(res.body.ciphertext, res.body.iv, k1, res.body.k2), plaintext);
   });
 
   test('requires an OTP before revealing', async () => {
@@ -99,7 +122,7 @@ describe('Email OTP: reveal', () => {
     const createRes = await request(app).post('/api/secret').send({ ...payload, recipientEmail: 'friend@example.com' });
     const { id } = createRes.body;
 
-    const res = await request(app).get(`/api/secret/${id}`).set('X-Key', k1);
+    const res = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1));
     assert.equal(res.status, 403);
     assert.equal(res.body.error, 'otp_required');
   });
@@ -109,7 +132,7 @@ describe('Email OTP: reveal', () => {
     const createRes = await request(app).post('/api/secret').send({ ...payload, recipientEmail: 'friend@example.com' });
     const { id } = createRes.body;
 
-    const res = await request(app).get(`/api/secret/${id}`).set('X-Key', k1).set('X-Otp', 'abc');
+    const res = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1)).set('X-Otp', 'abc');
     assert.equal(res.status, 403);
     assert.equal(res.body.error, 'invalid_otp');
   });
@@ -121,12 +144,12 @@ describe('Email OTP: reveal', () => {
 
     let last;
     for (let i = 0; i < 5; i++) {
-      last = await request(app).get(`/api/secret/${id}`).set('X-Key', k1).set('X-Otp', '000000');
+      last = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1)).set('X-Otp', '000000');
     }
     assert.equal(last.status, 410);
     assert.equal(last.body.error, 'too_many_attempts');
 
-    const after = await request(app).get(`/api/secret/${id}`).set('X-Key', k1).set('X-Otp', '111111');
+    const after = await request(app).get(`/api/secret/${id}`).set('X-Key-Hash', hashK1Header(k1)).set('X-Otp', '111111');
     assert.equal(after.status, 404);
   });
 });

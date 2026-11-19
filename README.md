@@ -10,10 +10,10 @@ Blink is a self-hosted, end-to-end encrypted secret sharing app. Paste a passwor
 
 1. You enter or generate a secret
 2. The secret is encrypted **in your browser** using AES-256-GCM (Web Crypto API)
-3. The encryption key `K` is split into two halves: `K1` (goes in the URL fragment) and `K2` (sent to the server)
-4. Neither half alone can decrypt anything - the server must participate in every reveal
-5. The server masks `K2` with `HMAC-SHA256(K3, secret_id)` before storing it, where `K3` is a permanent secret that never leaves the server
-6. When the recipient opens the link, the server reconstructs `K`, decrypts server-side, returns plaintext, and **immediately deletes the secret**
+3. The encryption key `K` is split into two halves: `K1` (stays in the URL fragment, never sent anywhere) and `K2` (sent to the server)
+4. The server masks `K2` with `HMAC-SHA256(K3, secret_id)` before storing it, where `K3` is a permanent secret that never leaves the server
+5. Your browser also sends `SHA-256(K1)` at creation time - a one-way hash, not `K1` itself - so the server has something to check a reveal request against later, without ever having seen `K1`
+6. When the recipient opens the link, their browser sends that same hash to prove it holds the real `K1`. If it matches, the server releases `K2` (and the ciphertext) and **immediately deletes the secret** - it never reconstructs `K`, never decrypts, and never sees the plaintext. **Decryption happens entirely in the recipient's browser.**
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Blink is a self-hosted, end-to-end encrypted secret sharing app. Paste a passwor
   </picture>
 </a>
 
-Neither `K1` nor `K2` alone can decrypt anything - the server must participate in every reveal, and `K3`/`K4` never leave the server. See [Key architecture](#key-architecture) below for what each one protects against.
+The server gates every reveal (it decides whether to release `K2` at all), but it never performs the decryption itself: `K1` never crosses the network, and `K3`/`K4` never leave the server. See [Key architecture](#key-architecture) below for what each one protects against.
 
 ## Features
 
@@ -57,13 +57,13 @@ The extension talks directly to `blink.malto.icu`'s API (`host_permissions` in `
 
 | Key | Lives where | Purpose |
 |-----|-------------|---------|
-| `K` | Browser only (never stored) | AES-256-GCM encryption key |
-| `K1` | URL fragment only | Sent to server at reveal time via `X-Key` header |
-| `K2` | Server memory (masked) | Stored as `K2 XOR HMAC(K3, id)` - useless without K3 |
+| `K` | Recipient's browser only (never stored, never transmitted) | AES-256-GCM encryption key, reconstructed client-side at reveal |
+| `K1` | URL fragment only | Never sent to the server - only `SHA-256(K1)` is, to prove the caller holds it |
+| `K2` | Server memory (masked), then the recipient's browser | Stored as `K2 XOR HMAC(K3, id)`; released to the browser only after the `K1` hash check passes |
 | `K3` | Server env var only | HMAC-masks K2 at rest - never transmitted anywhere |
 | `K4` | Server env var only | AES-encrypts ciphertext at rest - never transmitted anywhere |
 
-All four factors always required to decrypt. Missing any one → decryption fails completely.
+All four factors always required to decrypt, and the decryption itself (combining `K1` and `K2` into `K`, then AES-GCM-decrypting) happens exclusively in the recipient's browser - the server verifies, releases, and deletes, but never decrypts.
 
 ## Stack
 
@@ -145,15 +145,18 @@ server {
 |---|---|
 | Server memory dump | `K2` stored masked with `HMAC(K3, id)` - useless without `K3` |
 | Replay attack | Secret deleted from memory on first read |
-| Link interception | HTTPS enforced; `K1` is in URL fragment, never in request body |
+| Link interception | HTTPS enforced; `K1` lives only in the URL fragment and is never transmitted anywhere, not even to this app's own server |
 | Browser history exposure | `K1` cleared from URL via `history.replaceState` immediately on page load |
-| Offline decryption | Server must participate in every reveal - ciphertext alone is not enough |
+| Offline decryption | Ciphertext alone is not enough - `K2` is only released after the server verifies a `SHA-256(K1)` match, and the server itself never decrypts, so a compromised server can't leak plaintext from a reveal in transit |
+| Passive server compromise (DB dump, backend RCE, insider access to logs/memory) | Yields only masked/encrypted-at-rest `K2` and ciphertext - never `K1` or plaintext, since decryption happens exclusively in the recipient's browser, not on the server |
 | Brute-force OTP | 5-attempt limit per secret, then self-destructs; 30 reads/min/IP |
 | Email rate abuse | 3 OTP emails per hour per IP |
 | Brute-force IDs | UUID v4 (122 bits entropy) + rate limiting |
 | XSS | Strict CSP (`script-src 'self'`); user content set via `textContent` |
 | Host header injection | HTTPS redirect uses `process.env.HOST`, not `req.headers.host` |
 | Memory exhaustion | 10 000 secret cap; 1–48h TTL (user-chosen); purge interval every 60s |
+
+**What this doesn't protect against:** like any browser-based encryption tool (Signal's web client and ProtonMail's webmail included), you're trusting this server to serve honest, unmodified JavaScript at the moment you load the page. An operator who actively tampers with the served frontend to target a specific visitor could still exfiltrate `K1` or the decrypted plaintext from that visitor's browser. What the key-splitting architecture above *does* rule out is every form of passive compromise - a database dump, a backend RCE, a subpoena for data at rest, an insider with server/log access - none of which can recover a secret without also controlling what JavaScript gets served at the exact moment someone opens that one link.
 
 ## Logging
 
