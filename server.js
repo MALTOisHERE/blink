@@ -1502,28 +1502,28 @@ app.use((err, req, res, _next) => {
 // ── Startup checks ────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
   if (!process.env.SECRET_KEY) {
-    logger.warn('SECRET_KEY not set — K3 HMAC binding is disabled (K2 stored unmasked)');
+    logger.warn('SECRET_KEY not set: K3 HMAC binding is disabled (K2 stored unmasked)');
   }
   if (!process.env.CIPHER_KEY) {
-    logger.warn('CIPHER_KEY not set — K4 ciphertext encryption is disabled');
+    logger.warn('CIPHER_KEY not set: K4 ciphertext encryption is disabled');
   }
   if (!process.env.RESEND_API_KEY) {
-    logger.warn('RESEND_API_KEY not set — email OTP feature is disabled');
+    logger.warn('RESEND_API_KEY not set: email OTP feature is disabled');
   }
   if (!process.env.LS_STORE_ID || !process.env.LS_PRODUCT_ID) {
-    logger.warn('LS_STORE_ID / LS_PRODUCT_ID not set — Lemon Squeezy keys from ANY store would validate; Pro effectively limited to BLINK_PRO_DEV_KEY');
+    logger.warn('LS_STORE_ID / LS_PRODUCT_ID not set: Lemon Squeezy keys from ANY store would validate, Pro effectively limited to BLINK_PRO_DEV_KEY');
   }
   if (!GOOGLE_AUTH_CONFIGURED) {
-    logger.warn('Google sign-in not fully configured (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI/SESSION_SECRET) — Google Pro sign-in is disabled');
+    logger.warn('Google sign-in not fully configured (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI/SESSION_SECRET): Google Pro sign-in is disabled');
   }
   if (!GITHUB_AUTH_CONFIGURED) {
-    logger.warn('GitHub sign-in not fully configured (GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET/GITHUB_REDIRECT_URI/SESSION_SECRET) — GitHub Pro sign-in is disabled');
+    logger.warn('GitHub sign-in not fully configured (GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET/GITHUB_REDIRECT_URI/SESSION_SECRET): GitHub Pro sign-in is disabled');
   }
   if (!GOOGLE_AUTH_CONFIGURED && !GITHUB_AUTH_CONFIGURED) {
-    logger.warn('No Pro sign-in provider configured — only BLINK_PRO_DEV_KEY dev-login works locally');
+    logger.warn('No Pro sign-in provider configured: only BLINK_PRO_DEV_KEY dev-login works locally');
   }
   if (process.env.NODE_ENV === 'production' && !process.env.HOST) {
-    logger.warn('HOST not set — HTTPS redirect will not work in production');
+    logger.warn('HOST not set: HTTPS redirect will not work in production');
   }
 }
 
