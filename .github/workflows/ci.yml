@@ -19,13 +19,36 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
+        id: install
         run: npm install
 
       - name: Lint
+        id: lint
         run: npm run lint
 
       - name: Test
+        id: test
         run: npm test
 
       - name: Audit
+        id: audit
         run: npm audit --audit-level=high
+
+      - name: Job summary
+        if: always()
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          {
+            echo "### CI summary"
+            echo ""
+            echo "| Step | Result |"
+            echo "|---|---|"
+            echo "| Install dependencies | $INSTALL_OUTCOME |"
+            echo "| Lint | $LINT_OUTCOME |"
+            echo "| Test | $TEST_OUTCOME |"
+            echo "| Audit | $AUDIT_OUTCOME |"
+          } >> "$GITHUB_STEP_SUMMARY"

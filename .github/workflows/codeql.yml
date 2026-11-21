@@ -28,3 +28,18 @@ jobs:
       - uses: github/codeql-action/autobuild@d2aacf54c2fbc910db8d7ec338fdb54ea48c692d # v3
 
       - uses: github/codeql-action/analyze@d2aacf54c2fbc910db8d7ec338fdb54ea48c692d # v3
+        id: analyze
+
+      - name: Job summary
+        if: always()
+        env:
+          ANALYZE_OUTCOME: ${{ steps.analyze.outcome }}
+        run: |
+          {
+            echo "### CodeQL scan summary"
+            echo ""
+            echo "- Language scanned: javascript"
+            echo "- Query suite: security-and-quality"
+            echo "- Analyze step: $ANALYZE_OUTCOME"
+            echo "- Full results: see the repository's Security tab, Code scanning alerts"
+          } >> "$GITHUB_STEP_SUMMARY"
