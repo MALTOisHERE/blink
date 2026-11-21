@@ -828,7 +828,7 @@ function deriveK3Mask(id) {
 function encryptWithK4(ciphertextB64) {
   const ct  = Buffer.from(ciphertextB64, 'base64');
   const iv  = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', K4, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', K4, iv, { authTagLength: 16 });
   const enc = Buffer.concat([cipher.update(ct), cipher.final()]);
   const tag = cipher.getAuthTag();
   return {
@@ -842,7 +842,7 @@ function decryptWithK4(encCtB64, ctIvB64) {
   const iv  = Buffer.from(ctIvB64,  'base64');
   const tag = enc.subarray(enc.length - 16);
   const ct  = enc.subarray(0, enc.length - 16);
-  const decipher = crypto.createDecipheriv('aes-256-gcm', K4, iv);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', K4, iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString('base64');
 }

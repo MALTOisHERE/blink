@@ -26,11 +26,11 @@ jobs:
           echo "Releases can only be run from main (got $GITHUB_REF)." >&2
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -51,19 +51,24 @@ jobs:
 
       - name: Bump version, commit, and tag
         id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
-          npm version "${{ inputs.bump }}" -m "chore(release): v%s"
+          npm version "$BUMP" -m "chore(release): v%s"
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Push commit and tag
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
           git push origin HEAD:main
-          git push origin "v${{ steps.bump.outputs.version }}"
+          git push origin "v$VERSION"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
-          gh release create "v${{ steps.bump.outputs.version }}" \
-            --title "v${{ steps.bump.outputs.version }}" \
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
             --generate-notes
