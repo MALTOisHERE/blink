@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Short commit SHA to deploy (from a prior Image publish summary), e.g. to roll back. Leave empty to deploy the current commit on main - not the floating "latest" tag, so what runs always matches what you just triggered this from'
+        description: 'Image tag to deploy. "latest" for a normal deploy, or a short commit SHA (from a prior Image publish summary) to roll back to that build'
         required: false
-        default: ''
+        default: 'latest'
 
 concurrency:
   group: deploy
@@ -21,28 +21,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      # Empty input -> deploy exactly the commit this run was dispatched
-      # against (its own HEAD), never the mutable `latest` tag - so a deploy
-      # triggered right after a push can't silently pick up something newer
-      # that landed on main in between. An explicit SHA is a rollback: it
-      # only succeeds if Build and Publish Image already pushed that tag.
-      - name: Resolve tag to deploy
-        id: resolve
+      - name: Validate tag input
         env:
-          TAG_INPUT: ${{ inputs.tag }}
+          TAG: ${{ inputs.tag }}
         run: |
-          if [ -z "$TAG_INPUT" ]; then
-            TAG="$(git rev-parse --short=12 HEAD)"
-          else
-            TAG="$TAG_INPUT"
-          fi
           if ! [[ "$TAG" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
             echo "Invalid tag: must be alphanumeric plus . _ -" >&2
             exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Set up SSH
         run: |
@@ -62,7 +48,7 @@ jobs:
       - name: Deploy over SSH
         id: deploy
         env:
-          TAG: ${{ steps.resolve.outputs.tag }}
+          TAG: ${{ inputs.tag }}
           GHCR_ACTOR: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -74,7 +60,7 @@ jobs:
         if: always()
         env:
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
-          TAG: ${{ steps.resolve.outputs.tag }}
+          TAG: ${{ inputs.tag }}
         run: |
           {
             echo "### Deploy summary"
