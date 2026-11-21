@@ -216,6 +216,18 @@
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') clone.click();
     }, { once: true });
+
+    // Same clone-to-avoid-duplicate-listeners trick as the submit button
+    // above, since this function re-runs on every wrong attempt too.
+    const toggle = document.getElementById('passphrase-view-toggle');
+    const toggleClone = toggle.cloneNode(true);
+    toggle.parentNode.replaceChild(toggleClone, toggle);
+    toggleClone.addEventListener('click', () => {
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      toggleClone.setAttribute('aria-pressed', String(show));
+      toggleClone.setAttribute('aria-label', show ? 'Hide passphrase' : 'Show passphrase');
+    });
   }
 
   function setupOTP(id, k1B64, auth = {}, onDone = null) {

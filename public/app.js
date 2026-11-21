@@ -291,6 +291,16 @@
     closeGenOptions();
   });
 
+  // ── Passphrase visibility toggle ────────────────────────────────────────────
+  const passphraseInput  = document.getElementById('passphrase-input');
+  const passphraseToggle = document.getElementById('passphrase-toggle');
+  passphraseToggle.addEventListener('click', () => {
+    const show = passphraseInput.type === 'password';
+    passphraseInput.type = show ? 'text' : 'password';
+    passphraseToggle.setAttribute('aria-pressed', String(show));
+    passphraseToggle.setAttribute('aria-label', show ? 'Hide passphrase' : 'Show passphrase');
+  });
+
   // ── File tab ───────────────────────────────────────────────────────────────
   // UX nudge, not a real security boundary - a file is just encrypted bytes
   // to Blink either way, and renaming the extension would bypass this

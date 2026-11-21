@@ -224,17 +224,27 @@ body {
 
 /* ── Header (slim top bar) ── */
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 28px;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   position: sticky;
   top: 0;
   z-index: 100;
   animation: fadeDown .4s ease both;
+}
+/* Keeps the header's own background and border-bottom full-width, while
+   the actual content inside lines up exactly with every page's <main>
+   (.main, .about-main, .view-main - all 1400px/32px now) instead of the
+   header using its own unrelated padding. */
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 32px;
 }
 @keyframes fadeDown {
   from { opacity: 0; transform: translateY(-10px); }
@@ -926,9 +936,9 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 /* ── About page ── */
 .about-main {
   width: 100%;
-  max-width: 900px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 32px 24px 64px;
+  padding: 32px 32px 64px;
   display: flex;
   flex-direction: column;
   gap: 52px;
@@ -1126,7 +1136,10 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   line-height: 1.7;
   margin-bottom: 20px;
 }
-.about-pricing-grid { margin-top: 28px; }
+/* Caps these at the same width as the homepage's own .pricing section
+   (760px), so a card isn't stretched edge-to-edge now that .about-main
+   itself is as wide as .main - matches index.html's price cards exactly. */
+.about-pricing-grid { max-width: 760px; margin: 28px auto 0; }
 
 /* ── FAQ ── */
 .faq {
@@ -1329,11 +1342,17 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
 /* ── Footer ── */
 .footer {
-  text-align: center;
-  padding: 18px 20px;
+  padding: 18px 0;
   color: var(--text-dim);
   font-size: .75rem;
   border-top: 1px solid var(--border);
+}
+.footer-inner {
+  text-align: center;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 32px;
 }
 .footer-link {
   color: var(--green);
@@ -1554,10 +1573,10 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 /* ── View Page ── */
 .view-main {
   flex: 1;
-  max-width: 720px;
+  max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: 40px 20px 60px;
+  padding: 40px 32px 60px;
 }
 .view-state { display: none; }
 .view-state.active { display: block; animation: fadeUp .3s ease both; }
@@ -1758,6 +1777,41 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   text-align: center;
   padding: 13px 14px;
 }
+.pass-input-wrap {
+  display: flex;
+  align-items: center;
+  max-width: 300px;
+  margin: 0 auto 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.pass-input-wrap:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-dim); }
+.pass-input-wrap .pass-input {
+  flex: 1;
+  max-width: none;
+  border: none;
+  background: transparent;
+  margin-bottom: 0;
+  text-align: left;
+}
+.pass-input-wrap .pass-input:focus { border: none; box-shadow: none; }
+
+/* Eye icon that toggles a passphrase field between masked and plain text */
+.input-toggle-visibility {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 1px;
+  margin-right: 2px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.input-toggle-visibility:hover { color: var(--text); }
 
 /* Expired / Error state */
 .expired-card {
