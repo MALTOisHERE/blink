@@ -622,6 +622,17 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // graceful-shutdown moment to snapshot in that case, same as always.
 const secrets     = new Map();
 const MAX_SECRETS      = 10_000;
+// MAX_SECRETS alone doesn't bound memory: a Pro file secret's ciphertext
+// can be ~35MB (base64), so 10,000 of those would be ~350GB, nowhere near
+// the container's actual memory limit (512MB by default - see
+// docker-compose.yml). This caps the combined ciphertext size actually
+// held in memory at once, independent of how many secrets that is.
+const MAX_TOTAL_CIPHERTEXT_BYTES = Number(process.env.MAX_SECRETS_BYTES) || 256 * 1024 * 1024;
+function totalStoredCiphertextBytes() {
+  let total = 0;
+  for (const s of secrets.values()) total += s.ciphertext.length;
+  return total;
+}
 const ALLOWED_TTL_HOURS     = new Set([1, 6, 24, 48]);
 const ALLOWED_TTL_HOURS_PRO = new Set([1, 6, 24, 48, 168]);
 const DEFAULT_TTL_HOURS = 48;
@@ -1146,6 +1157,11 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
     return res.status(503).json({ error: 'Server is at capacity. Try again shortly.' });
   }
 
+  if (totalStoredCiphertextBytes() + ciphertext.length > MAX_TOTAL_CIPHERTEXT_BYTES) {
+    req.log.error({ bytesInMemory: totalStoredCiphertextBytes(), cap: MAX_TOTAL_CIPHERTEXT_BYTES }, 'server at memory capacity, rejecting create');
+    return res.status(503).json({ error: 'Server is at capacity. Try again shortly.' });
+  }
+
   // Generated early so it can be embedded in the OTP email below, letting a
   // recipient with multiple pending secrets match a code to the right link.
   const id = crypto.randomUUID();
@@ -1312,6 +1328,31 @@ app.get('/api/secret/:id', readLimiter.middleware(), (req, res) => {
     return res.status(410).json({ error: 'expired' });
   }
 
+  // A secret created by a server process from before this field existed
+  // (restored from a graceful-restart snapshot across a deploy) has no
+  // k1Hash to check against - treat it the same as "gone" rather than
+  // crash on a missing field.
+  if (!secret.k1Hash) {
+    secrets.delete(id);
+    req.log.warn({ secretId: idFragment(id) }, 'secret predates k1Hash support, discarding');
+    return res.status(410).json({ error: 'expired' });
+  }
+
+  // Verify the caller holds the real K1 - purely by comparing the supplied
+  // hash to the one recorded at creation, no decrypt attempt, no K1 or K
+  // ever constructed - before touching the passphrase/OTP gates or burning
+  // an attempt against them. This must run before any other gate: an
+  // attacker who only knows a secret's UUID, but not its key, must never be
+  // able to spend down the passphrase/OTP attempt counters and get the
+  // secret destroyed without ever proving key possession. See the big
+  // comment above unmaskK2() for why the hash comparison alone is enough.
+  const suppliedHash = Buffer.from(k1HashHeader, 'base64');
+  const storedHash   = Buffer.from(secret.k1Hash, 'base64');
+  if (suppliedHash.length !== storedHash.length || !crypto.timingSafeEqual(suppliedHash, storedHash)) {
+    req.log.warn({ secretId: idFragment(id) }, 'reveal rejected: wrong key');
+    return res.status(400).json({ error: 'Invalid key. The link may be corrupted.' });
+  }
+
   // Passphrase verification (Pro)
   if (secret.passHash) {
     const rawHeader = (req.headers['x-passphrase'] || '').trim();
@@ -1367,27 +1408,6 @@ app.get('/api/secret/:id', readLimiter.middleware(), (req, res) => {
       req.log.warn({ secretId: idFragment(id), attemptsLeft: 5 - secret.otpAttempts }, 'invalid otp attempt');
       return res.status(403).json({ error: 'invalid_otp', attemptsLeft: 5 - secret.otpAttempts });
     }
-  }
-
-  // A secret created by a server process from before this field existed
-  // (restored from a graceful-restart snapshot across a deploy) has no
-  // k1Hash to check against - treat it the same as "gone" rather than
-  // crash on a missing field.
-  if (!secret.k1Hash) {
-    secrets.delete(id);
-    req.log.warn({ secretId: idFragment(id) }, 'secret predates k1Hash support, discarding');
-    return res.status(410).json({ error: 'expired' });
-  }
-
-  // Verify the caller holds the real K1 - purely by comparing the supplied
-  // hash to the one recorded at creation, no decrypt attempt, no K1 or K
-  // ever constructed - before releasing anything or burning a view. See
-  // the big comment above unmaskK2() for why this is enough.
-  const suppliedHash = Buffer.from(k1HashHeader, 'base64');
-  const storedHash   = Buffer.from(secret.k1Hash, 'base64');
-  if (suppliedHash.length !== storedHash.length || !crypto.timingSafeEqual(suppliedHash, storedHash)) {
-    req.log.warn({ secretId: idFragment(id) }, 'reveal rejected: wrong key');
-    return res.status(400).json({ error: 'Invalid key. The link may be corrupted.' });
   }
 
   // Unwrap ciphertext from K4 and unmask K2 from K3 - both are server-only
