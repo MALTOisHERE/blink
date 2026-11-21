@@ -1,0 +1,72 @@
+name: Build and Publish Image
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        id: install
+        run: npm install
+
+      - name: Lint
+        id: lint
+        run: npm run lint
+
+      - name: Test
+        id: test
+        run: npm test
+
+      - name: Compute short SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/maltoishere/blink:latest
+            ghcr.io/maltoishere/blink:${{ steps.vars.outputs.sha_short }}
+
+      - name: Job summary
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          SHA: ${{ steps.vars.outputs.sha_short }}
+        run: |
+          {
+            echo "### Image publish summary"
+            echo ""
+            echo "- Build/push step: $BUILD_OUTCOME"
+            echo "- Pushed: \`ghcr.io/maltoishere/blink:latest\`"
+            echo "- Pushed: \`ghcr.io/maltoishere/blink:$SHA\`"
+            echo "- To roll back: run Deploy with tag \`$SHA\` (or any earlier image's SHA tag)"
+          } >> "$GITHUB_STEP_SUMMARY"

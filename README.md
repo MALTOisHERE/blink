@@ -124,9 +124,10 @@ Copy `.env.example` to `.env` for local overrides.
 
 ### CI/CD
 
-- **`ci.yml`**: runs automatically on every push/PR to `main` (install, lint, test, `npm audit --audit-level=high`). On a push to `main` only, a second job builds the Docker image and publishes it to GHCR as both `ghcr.io/maltoishere/blink:latest` and `ghcr.io/maltoishere/blink:<short-sha>`, but only once the first job (lint/test/audit) has passed.
-- **`release.yml`**: manual only. Actions tab → "Release" → "Run workflow" → pick `patch`/`minor`/`major`. Runs lint+test first, then bumps `package.json`'s version via `npm version`, commits, tags (`vX.Y.Z`), pushes, and publishes a GitHub Release with auto-generated notes. This only versions the source; it doesn't deploy.
-- **`deploy.yml`**: manual only, intentionally decoupled from releases (deploying and cutting a version are separate decisions). Takes an optional `tag` input. Left empty, it resolves to the current commit on `main` (not the floating `latest` tag, so a deploy always matches exactly what was just pushed, even if something else lands on `main` moments later). Set it to any earlier build's short SHA (shown in that build's "Image publish summary") to roll back to that exact image instead. SSHes into the VPS, syncs `docker-compose.yml` (via `git fetch` + `reset --hard`, never a plain `git pull`, so a dirty VPS checkout can never block a deploy), logs into GHCR with that run's own short-lived `GITHUB_TOKEN`, then pulls and restarts the resolved image tag. Needs `VPS_HOST`, `VPS_USER`, and `VPS_SSH_KEY` set as repo secrets (Settings → Secrets and variables → Actions).
+- **`ci.yml`**: runs automatically on every push/PR to `main` (install, lint, test, `npm audit --audit-level=high`). Doesn't build or publish anything.
+- **`build.yml`**: manual only. Actions tab → "Build and Publish Image" → "Run workflow". Runs its own lint+test first (same pattern as `release.yml`), then builds the Docker image and publishes it to GHCR as both `ghcr.io/maltoishere/blink:latest` and `ghcr.io/maltoishere/blink:<short-sha>` of whichever commit it was run against.
+- **`release.yml`**: manual only. Actions tab → "Release" → "Run workflow" → pick `patch`/`minor`/`major`. Runs lint+test first, then bumps `package.json`'s version via `npm version`, commits, tags (`vX.Y.Z`), pushes, and publishes a GitHub Release with auto-generated notes. This only versions the source; it doesn't build or deploy.
+- **`deploy.yml`**: manual only, intentionally decoupled from both releases and builds (cutting a version, building an image, and deploying are three separate decisions). Takes an optional `tag` input. Left empty, it resolves to the commit this run was triggered from (not the floating `latest` tag, so what deploys is always exactly what you meant to deploy, not whatever `latest` happens to point at). Set it to any earlier build's short SHA (shown in that build's "Image publish summary") to roll back to that exact image instead - either way, the image must already exist on GHCR (published by `build.yml`) or the pull fails. SSHes into the VPS, syncs `docker-compose.yml` (via `git fetch` + `reset --hard`, never a plain `git pull`, so a dirty VPS checkout can never block a deploy), logs into GHCR with that run's own short-lived `GITHUB_TOKEN`, then pulls and restarts the resolved image tag. Needs `VPS_HOST`, `VPS_USER`, and `VPS_SSH_KEY` set as repo secrets (Settings → Secrets and variables → Actions).
 - **`deploy-beszel.yml`**: manual only, separate from `deploy.yml` on purpose (the [Beszel monitoring stack](monitoring/beszel/README.md) is host infrastructure, not part of the Blink app, so it updates on its own schedule). Reuses the same three VPS secrets. See `monitoring/beszel/README.md` for the one-time setup this assumes is already done.
 
 ### nginx config
@@ -206,8 +207,9 @@ blink/
 ├── .github/workflows/
 │   ├── ci.yml            # Lint, test, audit on every push/PR to main
 │   ├── codeql.yml        # Static security analysis
+│   ├── build.yml         # Manual: build + publish the Docker image to GHCR
 │   ├── release.yml       # Manual: bump version, tag, publish a GitHub Release
-│   ├── deploy.yml        # Manual: SSH deploy to the VPS (separate from release)
+│   ├── deploy.yml        # Manual: pull + restart the published image on the VPS
 │   └── deploy-beszel.yml # Manual: update the Beszel monitoring stack (separate from the app deploy)
 ├── monitoring/
 │   └── beszel/           # VPS monitoring (hub + agent), not part of the Blink app itself
