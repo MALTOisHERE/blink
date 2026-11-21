@@ -8,11 +8,11 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - HOST=blink.malto.icu
+      - HOST=${HOST}
       - SECRET_KEY=${SECRET_KEY}
       - CIPHER_KEY=${CIPHER_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
-      - "EMAIL_FROM=Blink <noreply@malto.icu>"
+      - EMAIL_FROM=${EMAIL_FROM:-Blink <noreply@yourdomain.com>}
       - STATS_FILE=/data/stats.json
       - LICENSES_FILE=/data/licenses.json
       - SECRETS_SNAPSHOT_FILE=/data/secrets-snapshot.json
