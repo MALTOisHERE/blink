@@ -16,6 +16,30 @@
     overlay.classList.remove('hidden');
   }
 
+  // ── First-visit intro video ─────────────────────────────────────────────────
+  // Shown once per browser, like a quick ad for the product - autoplay-muted
+  // since it's meant to be glanced at, not something blocking the page. The
+  // "seen it" flag is set the moment it's shown, not on close, so it can
+  // never come back just because someone navigated away without dismissing
+  // it. The iframe's src is only ever set while the modal is open and cleared
+  // on close, so closing it actually stops playback instead of just hiding it.
+  const INTRO_VIDEO_SEEN_KEY = 'blinkIntroVideoSeen';
+  const introVideoOverlay = document.getElementById('intro-video-overlay');
+  const introVideoIframe  = document.getElementById('intro-video-iframe');
+  function closeIntroVideo() {
+    introVideoOverlay.classList.add('hidden');
+    introVideoIframe.src = '';
+  }
+  document.getElementById('intro-video-close').addEventListener('click', closeIntroVideo);
+  introVideoOverlay.addEventListener('click', e => { if (e.target === introVideoOverlay) closeIntroVideo(); });
+  if (!localStorage.getItem(INTRO_VIDEO_SEEN_KEY)) {
+    localStorage.setItem(INTRO_VIDEO_SEEN_KEY, '1');
+    setTimeout(() => {
+      introVideoIframe.src = 'https://www.youtube-nocookie.com/embed/ZAFwWRxTtjs?autoplay=1&mute=1';
+      openModal(introVideoOverlay);
+    }, 1200);
+  }
+
   // ── Pro license state ──────────────────────────────────────────────────────
   // Checkout URL comes from the server (PRO_CHECKOUT_URL env) so deployments
   // configure their own store without touching code.

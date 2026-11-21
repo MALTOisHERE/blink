@@ -1440,6 +1440,7 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 }
 .modal-overlay.hidden { display: none; }
 .modal {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
@@ -1448,6 +1449,35 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   overflow: hidden;
   box-shadow: var(--shadow-modal);
 }
+/* First-visit intro video: no modal card/header, just the video itself
+   (reusing .about-video-wrap's own border/radius/shadow as its only frame)
+   with a close button floating just outside its corner, since it sits
+   outside the video's own bounds it stays legible over any frame of the
+   video rather than needing a semi-transparent treatment. */
+.intro-video-lightbox {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+}
+.intro-video-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  z-index: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: var(--transition);
+}
+.intro-video-close:hover { border-color: var(--danger-border); color: var(--danger); }
 .modal-header {
   display: flex;
   align-items: center;
