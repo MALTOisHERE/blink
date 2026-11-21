@@ -19,12 +19,15 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${{ secrets.VPS_PORT || '22' }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
+      # Same reset --hard as deploy.yml: /var/www/blink is a deploy target, not
+      # somewhere anyone hand-edits, so this can never fail with "local changes
+      # would be overwritten" the way `git pull` could.
       - name: Pull latest config and restart the Beszel stack
         id: deploy
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.VPS_PORT || '22' }}" \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "cd /var/www/blink && git pull && cd monitoring/beszel && docker compose pull && docker compose up -d"
+            "cd /var/www/blink && git fetch origin main && git reset --hard origin/main && cd monitoring/beszel && docker compose pull && docker compose up -d"
 
       - name: Job summary
         if: always()

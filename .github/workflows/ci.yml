@@ -52,3 +52,55 @@ jobs:
             echo "| Test | $TEST_OUTCOME |"
             echo "| Audit | $AUDIT_OUTCOME |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Only runs after `test` succeeds, and only for pushes to main (never for
+  # PRs from forks, which can't be trusted with GITHUB_TOKEN's packages:write).
+  # Publishes the image under two tags: `latest` for normal deploys, and the
+  # short commit SHA so a bad deploy can be rolled back to any prior build by
+  # re-running Deploy with that SHA as the tag input, without rebuilding.
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Compute short SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/maltoishere/blink:latest
+            ghcr.io/maltoishere/blink:${{ steps.vars.outputs.sha_short }}
+
+      - name: Job summary
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          SHA: ${{ steps.vars.outputs.sha_short }}
+        run: |
+          {
+            echo "### Image publish summary"
+            echo ""
+            echo "- Build/push step: $BUILD_OUTCOME"
+            echo "- Pushed: \`ghcr.io/maltoishere/blink:latest\`"
+            echo "- Pushed: \`ghcr.io/maltoishere/blink:$SHA\`"
+            echo "- To roll back: run Deploy with tag \`$SHA\` (or any earlier image's SHA tag)"
+          } >> "$GITHUB_STEP_SUMMARY"

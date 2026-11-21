@@ -1,6 +1,6 @@
 services:
   blink:
-    build: .
+    image: ghcr.io/maltoishere/blink:${BLINK_IMAGE_TAG:-latest}
     container_name: blink
     restart: unless-stopped
     ports:

@@ -93,14 +93,19 @@ Open `http://localhost:3000`.
 
 ### Deploy with Docker
 
+The app runs from a prebuilt image (`ghcr.io/maltoishere/blink`), not a local build - CI publishes it on every push to `main`, tagged both `latest` and with that commit's short SHA.
+
 ```bash
 # Generate a permanent server secret (do this once)
 echo "SECRET_KEY=$(openssl rand -hex 32)" >> .env
 
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 The container binds to `127.0.0.1:3001` - put nginx in front.
+
+To pin a specific build (for example to roll back) instead of always running `latest`, set `BLINK_IMAGE_TAG=<short-sha>` in `.env` before pulling.
 
 ### Environment variables
 
@@ -113,14 +118,15 @@ The container binds to `127.0.0.1:3001` - put nginx in front.
 | `CIPHER_KEY` | - | K4 - AES-encrypts ciphertext at rest. Generate with `openssl rand -hex 32` |
 | `RESEND_API_KEY` | - | Resend API key. Required for email OTP feature |
 | `EMAIL_FROM` | `Blink <noreply@malto.icu>` | Sender address (must be a verified domain in Resend) |
+| `BLINK_IMAGE_TAG` | `latest` | Which published image tag `docker-compose.yml` pulls/runs. Set to a short commit SHA to pin a build or roll back |
 
 Copy `.env.example` to `.env` for local overrides.
 
 ### CI/CD
 
-- **`ci.yml`**: runs automatically on every push/PR to `main` (install, lint, test, `npm audit --audit-level=high`).
-- **`release.yml`**: manual only. Actions tab → "Release" → "Run workflow" → pick `patch`/`minor`/`major`. Runs lint+test first, then bumps `package.json`'s version via `npm version`, commits, tags (`vX.Y.Z`), pushes, and publishes a GitHub Release with auto-generated notes.
-- **`deploy.yml`**: manual only, intentionally decoupled from releases (deploying and cutting a version are separate decisions). SSHes into the VPS and runs `git pull && docker compose up -d --build`. Needs `VPS_HOST`, `VPS_USER`, and `VPS_SSH_KEY` set as repo secrets (Settings → Secrets and variables → Actions).
+- **`ci.yml`**: runs automatically on every push/PR to `main` (install, lint, test, `npm audit --audit-level=high`). On a push to `main` only, a second job builds the Docker image and publishes it to GHCR as both `ghcr.io/maltoishere/blink:latest` and `ghcr.io/maltoishere/blink:<short-sha>`, but only once the first job (lint/test/audit) has passed.
+- **`release.yml`**: manual only. Actions tab → "Release" → "Run workflow" → pick `patch`/`minor`/`major`. Runs lint+test first, then bumps `package.json`'s version via `npm version`, commits, tags (`vX.Y.Z`), pushes, and publishes a GitHub Release with auto-generated notes. This only versions the source; it doesn't deploy.
+- **`deploy.yml`**: manual only, intentionally decoupled from releases (deploying and cutting a version are separate decisions). Takes an optional `tag` input. Left empty, it resolves to the current commit on `main` (not the floating `latest` tag, so a deploy always matches exactly what was just pushed, even if something else lands on `main` moments later). Set it to any earlier build's short SHA (shown in that build's "Image publish summary") to roll back to that exact image instead. SSHes into the VPS, syncs `docker-compose.yml` (via `git fetch` + `reset --hard`, never a plain `git pull`, so a dirty VPS checkout can never block a deploy), logs into GHCR with that run's own short-lived `GITHUB_TOKEN`, then pulls and restarts the resolved image tag. Needs `VPS_HOST`, `VPS_USER`, and `VPS_SSH_KEY` set as repo secrets (Settings → Secrets and variables → Actions).
 - **`deploy-beszel.yml`**: manual only, separate from `deploy.yml` on purpose (the [Beszel monitoring stack](monitoring/beszel/README.md) is host infrastructure, not part of the Blink app, so it updates on its own schedule). Reuses the same three VPS secrets. See `monitoring/beszel/README.md` for the one-time setup this assumes is already done.
 
 ### nginx config

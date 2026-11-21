@@ -2,16 +2,48 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Short commit SHA to deploy (from a prior Image publish summary), e.g. to roll back. Leave empty to deploy the current commit on main - not the floating "latest" tag, so what runs always matches what you just triggered this from'
+        required: false
+        default: ''
 
 concurrency:
   group: deploy
   cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Empty input -> deploy exactly the commit this run was dispatched
+      # against (its own HEAD), never the mutable `latest` tag - so a deploy
+      # triggered right after a push can't silently pick up something newer
+      # that landed on main in between. An explicit SHA is a rollback: it
+      # only succeeds if Build and Publish Image already pushed that tag.
+      - name: Resolve tag to deploy
+        id: resolve
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          if [ -z "$TAG_INPUT" ]; then
+            TAG="$(git rev-parse --short=12 HEAD)"
+          else
+            TAG="$TAG_INPUT"
+          fi
+          if ! [[ "$TAG" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+            echo "Invalid tag: must be alphanumeric plus . _ -" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
@@ -19,23 +51,35 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${{ secrets.VPS_PORT || '22' }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
+      # The /var/www/blink checkout is a deploy target, not somewhere anyone
+      # hand-edits - `git fetch` + `reset --hard` keeps it mirroring main
+      # exactly and can never fail with "local changes would be overwritten"
+      # the way `git pull` could. This only syncs docker-compose.yml/.env.example
+      # (and anything else tracked); the app itself is no longer built here at
+      # all - it's a prebuilt image pulled from GHCR below. The GHCR login uses
+      # this run's own GITHUB_TOKEN (read-only, expires when the job ends) so
+      # the VPS never needs a long-lived registry credential of its own.
       - name: Deploy over SSH
         id: deploy
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          GHCR_ACTOR: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.VPS_PORT || '22' }}" \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "cd /var/www/blink && git pull && docker compose up -d --build"
+            "cd /var/www/blink && git fetch origin main && git reset --hard origin/main && echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_ACTOR' --password-stdin && BLINK_IMAGE_TAG='$TAG' docker compose pull && BLINK_IMAGE_TAG='$TAG' docker compose up -d && docker logout ghcr.io"
 
       - name: Job summary
         if: always()
         env:
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
-          SHA: ${{ github.sha }}
+          TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           {
             echo "### Deploy summary"
             echo ""
             echo "- Target: production VPS"
-            echo "- Commit deployed: $SHA"
+            echo "- Image tag deployed: \`$TAG\`"
             echo "- SSH deploy step: $DEPLOY_OUTCOME"
           } >> "$GITHUB_STEP_SUMMARY"
