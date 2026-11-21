@@ -113,11 +113,12 @@ To pin a specific build (for example to roll back) instead of always running `la
 |---|---|---|
 | `NODE_ENV` | `development` | Set to `production` to enable HTTPS redirect and HSTS |
 | `PORT` | `3000` | Port to listen on |
-| `HOST` | - | Your domain (e.g. `blink.malto.icu`). Required in production |
+| `HOST` | - | Your domain (e.g. `yourdomain.com`). Required in production |
 | `SECRET_KEY` | - | K3 - HMAC-masks K2 at rest. Generate with `openssl rand -hex 32` |
 | `CIPHER_KEY` | - | K4 - AES-encrypts ciphertext at rest. Generate with `openssl rand -hex 32` |
 | `RESEND_API_KEY` | - | Resend API key. Required for email OTP feature |
-| `EMAIL_FROM` | `Blink <noreply@malto.icu>` | Sender address (must be a verified domain in Resend) |
+| `EMAIL_FROM` | `Blink <noreply@yourdomain.com>` | Sender address (must be a verified domain in Resend) |
+| `LOGO_URL` | - | Absolute URL to a logo image shown in transactional emails. Leave unset for no logo image (text-only) |
 | `BLINK_IMAGE_TAG` | `latest` | Which published image tag `docker-compose.yml` pulls/runs. Set to a short commit SHA to pin a build or roll back |
 
 Copy `.env.example` to `.env` for local overrides.

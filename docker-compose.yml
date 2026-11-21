@@ -13,6 +13,7 @@ services:
       - CIPHER_KEY=${CIPHER_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - EMAIL_FROM=${EMAIL_FROM:-Blink <noreply@yourdomain.com>}
+      - LOGO_URL=${LOGO_URL}
       - STATS_FILE=/data/stats.json
       - LICENSES_FILE=/data/licenses.json
       - SECRETS_SNAPSHOT_FILE=/data/secrets-snapshot.json

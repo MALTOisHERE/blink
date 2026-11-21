@@ -79,12 +79,25 @@ app.use(pinoHttp({
   },
 }));
 
+// ── Branding (optional) ──────────────────────────────────────────────────────
+// Nothing here has a hardcoded default pointing at this deployment's own
+// domain/CDN - a self-hoster who doesn't set LOGO_URL just gets emails with
+// no logo image (still shows the "Blink" wordmark text) instead of someone
+// else's branding; the CSP's img-src only widens to LOGO_URL's own origin
+// when it's actually set.
+const LOGO_URL = process.env.LOGO_URL || null;
+let LOGO_ORIGIN = null;
+if (LOGO_URL) {
+  try { LOGO_ORIGIN = new URL(LOGO_URL).origin; }
+  catch { logger.warn('LOGO_URL is not a valid URL, ignoring it'); }
+}
+
 // ── Security headers ────────────────────────────────────────────────────────
 // CSP default-src 'none' plus narrow allowlists per directive: every
 // resource type must be explicitly opted in, so a new script/style/image
 // source added anywhere in the frontend fails closed until it's added here
-// too. assets.malto.icu is the one external origin, used only for the
-// logo/icon images and fonts served from a CDN separate from the app itself.
+// too. LOGO_ORIGIN (above) is the only external image origin, added only
+// when LOGO_URL is configured.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options',     'nosniff');
   res.setHeader('X-Frame-Options',            'DENY');
@@ -109,10 +122,10 @@ app.use((req, res, next) => {
       "script-src 'self'",
       "style-src 'self'",
       "font-src 'self'",
-      "img-src 'self' data: https://assets.malto.icu",
+      `img-src 'self' data:${LOGO_ORIGIN ? ` ${LOGO_ORIGIN}` : ''}`,
       // api.github.com is called client-side by github-stars.js, straight
       // from each visitor's own browser - never through this server.
-      "connect-src 'self' https://assets.malto.icu https://api.github.com",
+      "connect-src 'self' https://api.github.com",
       "manifest-src 'self'",
       "worker-src 'self'",
       // The about page's demo video is the one embedded frame on the site -
@@ -907,12 +920,16 @@ function viewsSetByLine(viewsAllowed) {
 // eyebrow badge naming the email's type, and a fading green divider —
 // mirrors the site's own light-theme tokens (style.css) and badge pattern
 // (e.g. .about-hero-badge), since CSS mask-recoloring isn't available in
-// email clients and the logo PNG itself is baked at the dark-theme green.
+// email clients. The logo cell is skipped entirely when LOGO_URL isn't
+// configured, rather than falling back to this deployment's own image.
 function emailHeader(eyebrow) {
+  const logoCell = LOGO_URL
+    ? `<td style="vertical-align:middle;width:32px;"><img src="${LOGO_URL}" alt="Blink" width="32" height="32" style="display:block;height:32px;width:32px;"></td>`
+    : '';
   return `
     <tr><td style="padding:24px 28px 18px;">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
-        <td style="vertical-align:middle;width:32px;"><img src="https://assets.malto.icu/blink/logo.png" alt="Blink" width="32" height="32" style="display:block;height:32px;width:32px;"></td>
+        ${logoCell}
         <td style="vertical-align:middle;padding-left:10px;white-space:nowrap;">
           <span style="color:#2f9e2a;font-size:18px;font-weight:700;">Blink</span>
           <span style="display:inline-block;margin-left:8px;border:1px solid rgba(0,0,0,0.10);border-radius:999px;padding:3px 9px;font-size:10px;color:#9aa0aa;vertical-align:middle;">by MALTO</span>
@@ -926,10 +943,15 @@ function emailHeader(eyebrow) {
   `;
 }
 
+// The version/site line links to this deployment's own HOST, not a
+// hardcoded domain - without HOST configured, it's still just plain text.
 function emailFooter() {
+  const siteLine = process.env.HOST
+    ? `Blink v${APP_VERSION} &middot; <a href="https://${process.env.HOST}" style="color:#9aa0aa;text-decoration:none;">${process.env.HOST}</a>`
+    : `Blink v${APP_VERSION}`;
   return `
     <tr><td style="padding:9px 28px;border-top:1px solid rgba(0,0,0,0.10);text-align:center;">
-      <p style="margin:0;font-size:10px;line-height:1.3;color:#9aa0aa;">Blink v${APP_VERSION} &middot; <a href="https://blink.malto.icu" style="color:#9aa0aa;text-decoration:none;">blink.malto.icu</a></p>
+      <p style="margin:0;font-size:10px;line-height:1.3;color:#9aa0aa;">${siteLine}</p>
     </td></tr>
   `;
 }
