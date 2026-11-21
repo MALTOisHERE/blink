@@ -107,11 +107,11 @@ app.use((req, res, next) => {
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin');
   // COEP requires every cross-origin resource (including an <iframe>) to
   // send a matching header back, which youtube-nocookie.com's embed does
-  // not - the demo video on /about would otherwise fail to load with
-  // ERR_BLOCKED_BY_RESPONSE. Nothing on this site needs cross-origin
-  // isolation (no SharedArrayBuffer/WASM threads), so this is safe to skip
-  // on the one page that embeds something.
-  if (req.path !== '/about') {
+  // not - both /about's demo video and /'s first-visit intro video popup
+  // would otherwise fail to load with ERR_BLOCKED_BY_RESPONSE. Nothing on
+  // this site needs cross-origin isolation (no SharedArrayBuffer/WASM
+  // threads), so this is safe to skip on the pages that embed something.
+  if (req.path !== '/about' && req.path !== '/') {
     res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
   }
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
