@@ -9,13 +9,15 @@ header = """
 All notable changes to Blink, generated automatically from commit history on every release.
 """
 body = """
-## {{ release.version }}{% if release.timestamp %} - {{ release.timestamp | date(format="%Y-%m-%d") }}{% endif %}
-{% for group, commits in release.commits | group_by(attribute="group") %}
+{%- if commits %}
+## {{ version | default(value="Unreleased") }}{% if timestamp %} - {{ timestamp | date(format="%Y-%m-%d") }}{% endif %}
+{% for group, group_commits in commits | group_by(attribute="group") %}
 ### {{ group }}
-{% for commit in commits %}
+{% for commit in group_commits %}
 - {{ commit.message | upper_first }}
 {% endfor %}
 {% endfor %}
+{%- endif %}
 """
 trim = true
 footer = ""

@@ -7,21 +7,23 @@
 [changelog]
 header = ""
 body = """
-<article class="changelog-entry" id="{{ release.version | escape }}">
+{%- if commits %}
+<article class="changelog-entry" id="{{ version | default(value="Unreleased") | escape }}">
   <div class="changelog-entry-head">
-    <h2 class="changelog-version">{{ release.version | escape }}</h2>
-    {% if release.timestamp %}<time class="changelog-date" datetime="{{ release.timestamp | date(format="%Y-%m-%d") }}">{{ release.timestamp | date(format="%B %d, %Y") }}</time>{% endif %}
+    <h2 class="changelog-version">{{ version | default(value="Unreleased") | escape }}</h2>
+    {% if timestamp %}<time class="changelog-date" datetime="{{ timestamp | date(format="%Y-%m-%d") }}">{{ timestamp | date(format="%B %d, %Y") }}</time>{% endif %}
   </div>
-  {% for group, commits in release.commits | group_by(attribute="group") %}
+  {% for group, group_commits in commits | group_by(attribute="group") %}
   <div class="changelog-group">
     <div class="changelog-group-label">{{ group | escape }}</div>
     <ul class="changelog-group-list">
-      {% for commit in commits %}<li>{{ commit.message | upper_first | escape }}</li>
+      {% for commit in group_commits %}<li>{{ commit.message | upper_first | escape }}</li>
       {% endfor %}
     </ul>
   </div>
   {% endfor %}
 </article>
+{%- endif %}
 """
 trim = true
 footer = ""
