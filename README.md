@@ -123,6 +123,24 @@ To pin a specific build (for example to roll back) instead of always running `la
 
 Copy `.env.example` to `.env` for local overrides.
 
+### Commit messages
+
+Commit subjects follow [Conventional Commits](https://www.conventionalcommits.org): `type: description`, lowercase, no period. `cliff.toml`/`cliff-site.toml` read this prefix to group entries on the `/changelog` page and in `CHANGELOG.md` - an unrecognized prefix just lands in "Other", so nothing breaks, but it won't be grouped usefully.
+
+| Prefix | Use for | Changelog group |
+|---|---|---|
+| `feat:` | A new user-facing capability | Features |
+| `fix:` | Something was broken/wrong, now correct | Bug Fixes |
+| `perf:` | Faster, same behavior | Performance |
+| `refactor:` | Internal restructuring, no behavior change | Refactor |
+| `docs:` | Documentation only | Documentation |
+| `style:` | Formatting/whitespace only (not CSS/UI) | Maintenance |
+| `ci:` / `build:` / `test:` / `deploy:` / `security:` | Pipeline, dependencies, tests, infra | Maintenance |
+| `chore:` | Routine maintenance that doesn't fit elsewhere | Chores |
+| `chore(release):` | Version bump commits only (written by `release.yml` itself) | Skipped entirely |
+
+The test that usually settles `feat` vs `fix`: if this commit didn't exist, would a user be *missing* something (`feat`), or would they be hitting *broken* behavior (`fix`)?
+
 ### CI/CD
 
 - **`ci.yml`**: runs automatically on every push/PR to `main` (install, lint, test, `npm audit --audit-level=high`). Doesn't build or publish anything.
