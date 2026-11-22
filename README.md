@@ -93,7 +93,7 @@ Open `http://localhost:3000`.
 
 ### Deploy with Docker
 
-The app runs from a prebuilt image (`ghcr.io/maltoishere/blink`), not a local build - CI publishes it on every push to `main`, tagged both `latest` and with that commit's short SHA.
+The app runs from a prebuilt image (`ghcr.io/maltoishere/blink`), not a local build - `build.yml` publishes it (Actions tab → "Build and Publish Image" → "Run workflow"), tagged both `latest` and with that commit's short SHA.
 
 ```bash
 # Generate a permanent server secret (do this once)
