@@ -57,6 +57,29 @@ jobs:
           npm version "$BUMP" -m "chore(release): v%s"
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
+      - name: Regenerate CHANGELOG.md
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        env:
+          OUTPUT: CHANGELOG.md
+        with:
+          config: cliff.toml
+
+      - name: Regenerate changelog page partial
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        env:
+          OUTPUT: public/changelog-data.html
+        with:
+          config: cliff-site.toml
+
+      - name: Commit regenerated changelog
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git add CHANGELOG.md public/changelog-data.html
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: regenerate changelog for v$VERSION"
+          fi
+
       - name: Push commit and tag
         env:
           VERSION: ${{ steps.bump.outputs.version }}
@@ -83,5 +106,6 @@ jobs:
             echo ""
             echo "- New version: v$VERSION"
             echo "- Tag pushed: v$VERSION"
+            echo "- Changelog: CHANGELOG.md and /changelog regenerated from commit history"
             echo "- Release: https://github.com/$REPO/releases/tag/v$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"

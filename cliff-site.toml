@@ -1,0 +1,47 @@
+# git-cliff config for the HTML changelog partial served at /changelog
+# (public/changelog-data.html). Regenerated on every release alongside
+# CHANGELOG.md by .github/workflows/release.yml. Every interpolated field
+# is escaped since commit text is not trusted HTML.
+# See https://git-cliff.org/docs/configuration for field reference.
+
+[changelog]
+header = ""
+body = """
+<article class="changelog-entry" id="{{ release.version | escape }}">
+  <div class="changelog-entry-head">
+    <h2 class="changelog-version">{{ release.version | escape }}</h2>
+    {% if release.timestamp %}<time class="changelog-date" datetime="{{ release.timestamp | date(format="%Y-%m-%d") }}">{{ release.timestamp | date(format="%B %d, %Y") }}</time>{% endif %}
+  </div>
+  {% for group, commits in release.commits | group_by(attribute="group") %}
+  <div class="changelog-group">
+    <div class="changelog-group-label">{{ group | escape }}</div>
+    <ul class="changelog-group-list">
+      {% for commit in commits %}<li>{{ commit.message | upper_first | escape }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</article>
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+protect_breaking_commits = true
+topo_order_commits = true
+sort_commits = "newest"
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+commit_parsers = [
+  { message = '^chore\(release\)', skip = true },
+  { message = '^Merge', skip = true },
+  { message = '^feat', group = "Features" },
+  { message = '^fix', group = "Bug Fixes" },
+  { message = '^perf', group = "Performance" },
+  { message = '^refactor', group = "Refactor" },
+  { message = '^docs?', group = "Documentation" },
+  { message = '^(ci|build|test|style|deploy|security)', group = "Maintenance" },
+  { message = '^chore', group = "Chores" },
+  { message = '.*', group = "Other" },
+]
