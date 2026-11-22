@@ -1,0 +1,759 @@
+
+
+<article class="changelog-entry" id="v2.0.10">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.10</h2>
+<time class="changelog-date" datetime="2026-11-22">November 22, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Correct git-cliff template variable names, verified against the real binary</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Documentation</div>
+<ul class="changelog-group-list">
+<li>Document the commit-prefix convention the changelog relies on</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Features</div>
+<ul class="changelog-group-list">
+<li>Add a changelog page, generated from commit history via git-cliff</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.9">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.9</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Exclude &#x2F; from COEP header, same as &#x2F;about already was</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.8">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.8</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Features</div>
+<ul class="changelog-group-list">
+<li>Show the demo video as a one-time popup for first-time visitors</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.7">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.7</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Stop browser treating email+passphrase fields as a login form, add show&#x2F;hide toggle</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.6">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.6</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Make email branding configurable instead of hardcoded to this deployment</li>
+<li>Stop hardcoding HOST and EMAIL_FROM in docker-compose.yml</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.5">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.5</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Run as the base image&#x27;s own node user instead of an ad-hoc one</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Maintenance</div>
+<ul class="changelog-group-list">
+<li>Default to latest tag again instead of resolving current commit</li>
+<li>Make build (image publish) manual too, not tied to push</li>
+<li>Build-once image-based deploys instead of git pull + build on the VPS</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.4">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.4</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Render email logo as square instead of forced 47x32</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.3">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.3</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Maintenance</div>
+<ul class="changelog-group-list">
+<li>Add job summaries to every workflow</li>
+<li>Remove em dashes from user-facing docs and log messages</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.2">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.2</h2>
+<time class="changelog-date" datetime="2026-11-21">November 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Pin GitHub Actions to commit SHAs, remove shell-injection risk, set explicit GCM tag length</li>
+<li>Close reveal-order bypass, log redaction gap, and unbounded memory growth</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.1">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.1</h2>
+<time class="changelog-date" datetime="2026-11-19">November 19, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Document client-side decryption flow
+
+Update the README, about page, and llms.txt to explain K1 hash verification, server-side release of encrypted data, and decryption in the recipient&#x27;s browser.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v2.0.0">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.0.0</h2>
+<time class="changelog-date" datetime="2026-11-19">November 19, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Move secret decryption entirely to clients
+
+Verify reveal requests with SHA-256(K1), then release K2 and ciphertext for browser-side decryption. Update tests and architecture documentation for the end-to-end flow.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.13">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.13</h2>
+<time class="changelog-date" datetime="2026-11-14">November 14, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Features</div>
+<ul class="changelog-group-list">
+<li>Add GitHub star button and live count to header across multiple pages</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.12">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.12</h2>
+<time class="changelog-date" datetime="2026-11-14">November 14, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Update Blink branding assets
+
+Use MALTO&#x27;s SVG logo for the extension, site branding, favicons, social previews, and manifest icons. Keep the existing Blink logo in email headers.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.11">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.11</h2>
+<time class="changelog-date" datetime="2026-11-14">November 14, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Update about.html</li>
+<li>Expand about video to container width
+
+Remove the 640px width cap and centered margins from the about video wrapper so it fills its container, and use the surface color instead of black for its background.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.10">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.10</h2>
+<time class="changelog-date" datetime="2026-11-08">November 08, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Skip COEP on the about page
+
+Allow the YouTube embed on &#x2F;about to load by omitting Cross-Origin-Embedder-Policy there, while retaining it on other routes.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.9">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.9</h2>
+<time class="changelog-date" datetime="2026-11-08">November 08, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Upgrade Resend to v6
+
+Update the Resend dependency to ^6.37.0.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.8">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.8</h2>
+<time class="changelog-date" datetime="2026-11-08">November 08, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Embed demo video on about page
+
+Add a responsive YouTube privacy-enhanced video embed and allow its domain in the content security policy.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.7">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.7</h2>
+<time class="changelog-date" datetime="2026-10-21">October 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Document modules and clean up lint findings
+
+Add concise module and test descriptions, update Biome rules and overrides, and clean up lint-related syntax and Node.js imports across the app and browser extension.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.6">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.6</h2>
+<time class="changelog-date" datetime="2026-10-21">October 21, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Expand tests and lint frontend scripts
+
+Add coverage for authentication, licensing, OTP, file secrets, rate limits, and graceful restarts. Extend ESLint to browser and extension code, add Biome, and expose snapshot helpers for restart testing.</li>
+<li>Update README.md</li>
+<li>Update README.md</li>
+<li>Update README.md</li>
+<li>Add theme-aware architecture diagrams
+
+Split the architecture image into light and dark variants and use a color-scheme-aware `&lt;picture&gt;` element in the README.</li>
+<li>Add architecture diagram to README
+
+Replace the inline Mermaid architecture flowchart with a dedicated image in `.docs&#x2F;architecture.png`.</li>
+<li>Update README.md</li>
+<li>Update README.md</li>
+<li>Update README.md</li>
+<li>Update README.md</li>
+<li>Update README.md</li>
+<li>Update README.md</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.5">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.5</h2>
+<time class="changelog-date" datetime="2026-10-20">October 20, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Add security and site discovery metadata
+
+Document vulnerability reporting and add security.txt, llms.txt, robots.txt, and a sitemap for Blink.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.4">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.4</h2>
+<time class="changelog-date" datetime="2026-10-20">October 20, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Improve mobile layout and overflow handling
+
+Reorder the hero and secret card for smaller screens, compact the extension banner, and keep overflowing pills and badges scrollable to prevent page-width clipping.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.3">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.3</h2>
+<time class="changelog-date" datetime="2026-10-18">October 18, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Offer Pro upgrades for free-tier limits
+
+Show an Upgrade to Pro action when users hit the free-tier daily cap, while keeping it hidden for rate limits that affect all plans.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.2">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.2</h2>
+<time class="changelog-date" datetime="2026-10-18">October 18, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Persist rate limits across graceful restarts
+
+Snapshot and restore active rate-limiter entries so deploys preserve daily quotas and burst windows. Add a dedicated modal for 429 responses and document the new snapshot configuration.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.1">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.1</h2>
+<time class="changelog-date" datetime="2026-10-18">October 18, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Trust both reverse-proxy hops
+
+Resolve client IPs correctly behind Cloudflare and nginx so IP-based rate limits and logs use the visitor address. Build the free-plan limit message from the configured maximum.</li>
+<li>Preserve secrets across graceful restarts
+
+Snapshot pending encrypted secrets to persistent storage during graceful shutdown and restore them on startup. Document the snapshot configuration and restart behavior, and expand Beszel proxy, caching, and email setup guidance.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.2.0">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.2.0</h2>
+<time class="changelog-date" datetime="2026-10-18">October 18, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Log secret creation request source
+
+Classify requests as extension, web, or unknown based on their Origin header and include the source in secret creation logs.</li>
+<li>Move Beszel hub off its default port
+
+Publish the hub on localhost port 58988 instead of 8090 to avoid default-port scans, keeping the container&#x27;s internal port unchanged. Update the agent URL, example environment, and setup and reverse-proxy documentation to match.</li>
+<li>Add Beszel monitoring stack and deployment
+
+Add a separate Beszel hub and agent Compose stack, document its setup and updates, and provide a manual GitHub Actions workflow to deploy it independently of the Blink app.</li>
+<li>Add structured logging with pino, end to end
+
+Replaces morgan&#x2F;console.* with pino: every significant action (secret
+created&#x2F;viewed&#x2F;destroyed, OTP sent&#x2F;verified, license activate&#x2F;deactivate,
+OAuth login, rate limits, tampered sessions, misconfiguration) logs to both
+the console and a rotating file under LOGS_DIR (daily, gzip, 14-day
+retention) so nothing is lost across a container restart.
+
+Access logging is scoped to &#x2F;api&#x2F;* only, so static assets and page loads
+don&#x27;t produce a line per file on every page view, while errors always log
+regardless of path. Logged IP uses Express&#x27;s trust-proxy-aware req.ip
+instead of pino-http&#x27;s default raw-socket address, which behind a reverse
+proxy would otherwise be identical for every visitor.
+
+flushLogs() is awaited before every intentional process.exit() (shutdown,
+uncaughtException, unhandledRejection), since exiting right after a burst of
+writes can otherwise lose them outright - verified by reproducing the loss
+and then the fix with a real write-then-exit test.
+
+Secrets, keys, OTP codes, and passphrases never reach a log line: call
+sites only ever log specific chosen fields, backed by pino&#x27;s redact config.
+
+Also fixes two gaps left over from the GitHub sign-in work: missing
+GITHUB_CLIENT_ID&#x2F;SECRET&#x2F;REDIRECT_URI in docker-compose.yml, and enables the
+no-console ESLint rule so this can&#x27;t silently regress.</li>
+<li>Add GitHub sign-in for Pro accounts
+
+Support GitHub OAuth alongside Google, using verified email to share Pro accounts across providers and migrate existing license mappings. Update sign-in and privacy copy, and restrict service worker interception to same-origin requests with an offline cache fallback.</li>
+<li>Update style.css</li>
+<li>Add segmented OTP code input
+
+Replace the single verification-code field with six digit boxes that support auto-advance, paste, autofill, and keyboard navigation. Adjust the Blink logo dimensions in email headers.</li>
+<li>Update about.html</li>
+<li>Document the Blink browser extension
+
+Add extension features, store availability, architecture, and setup details to the README, and add a browser extension FAQ to the About page.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.1.4">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.1.4</h2>
+<time class="changelog-date" datetime="2026-10-17">October 17, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Refresh transactional email templates
+
+Introduce shared branded headers, footers, and preheaders for verification and activity emails. Update both templates to a light theme with clearer status details and categorize their subject lines.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.1.3">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.1.3</h2>
+<time class="changelog-date" datetime="2026-10-14">October 14, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Features</div>
+<ul class="changelog-group-list">
+<li>Add dismissible Chrome extension announcement banner</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Link Chrome extension listing on homepage and fix hero alignment
+
+Chrome badge now links to the published Chrome Web Store listing with
+its real logo and a NEW tag; Edge&#x2F;Firefox stay disabled until published.
+Also fixes the hero badge&#x2F;link stretching to full width and the
+subtitle&#x27;s narrow text-wrap:balance wrapping.</li>
+<li>Add extension settings and themes
+
+This commit adds persistent Blink extension settings stored in chrome.storage.sync, including selection bubble enablement, context-menu enablement, and default expiry. It introduces an options page for managing those settings, wires the background script to sync menu state instantly, and updates the selection bubble to respect the saved configuration. It also adds popup theming controls and a saved-theme initialization script, plus a privacy-policy navigation update and styling tweaks.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.1.2">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.1.2</h2>
+<time class="changelog-date" datetime="2026-10-11">October 11, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Add browser extension teaser
+
+This change adds a new browser extension section to the homepage with soon-to-launch Chrome, Edge, and Firefox badges, along with styling for the new CTA and label treatment. It also tweaks a few layout styles to improve badge and hero alignment consistency.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.1.1">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.1.1</h2>
+<time class="changelog-date" datetime="2026-10-11">October 11, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Add Blink browser extension and privacy page
+
+This commit introduces the Blink browser extension for creating shareable encrypted links directly from the browser, including selection-based and popup-based flows. It also adds the public privacy policy page and links it from the website footer, plus a small server route to serve the new page. The extension mirrors the site&#x27;s encryption logic and is designed to keep the secret local before submitting to the Blink API.</li>
+<li>Harden cookies and document release flow
+
+This patch hardens cookie parsing by using a null-prototype object to prevent prototype pollution from raw Cookie headers, and applies the read rate limiter to the &#x2F;about and &#x2F;view&#x2F;:id pages. It also updates the README with the new light&#x2F;dark theme, CI&#x2F;CD workflow docs, and the project structure details for PWA assets and deployment.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.1.0">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.1.0</h2>
+<time class="changelog-date" datetime="2026-10-11">October 11, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Polish header&#x2F;footer brand marks and homepage layout details  - Recolor the Blink eye icon and MALTO footer mark via CSS mask so   they inherit the app&#x27;s actual green&#x2F;text tokens instead of their   baked-in PNG colors, keeping both in sync across light&#x2F;dark mode - Default to light mode when no theme preference is stored, instead   of following the OS&#x2F;browser&#x27;s prefers-color-scheme - Keep the stat card&#x27;s layout stable at any digit count by always   wrapping the sub-line onto its own row instead of relying on   overflow-triggered wrapping - Drop the homepage&#x27;s duplicate &quot;E2E Encrypted &#x2F; View Once &#x2F;   Auto-Expires&quot; trust row now that the feature cards already say it</li>
+<li>Make owner-account button open Pro modal instead of disabling it</li>
+<li>Restore sign-out button visibility for owner accounts</li>
+<li>Hide sign-out button for owner accounts</li>
+<li>Improve sign-out button styling and dynamic modal title&#x2F;label</li>
+<li>Satisfy eqeqeq lint rule in license validation check</li>
+<li>Move pricing to &#x2F;about</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Chores</div>
+<ul class="changelog-group-list">
+<li>Bump body-parser and js-yaml to patch known vulnerabilities</li>
+<li>Pass Pro licensing env vars to container</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Documentation</div>
+<ul class="changelog-group-list">
+<li>Update about page with file sharing, Pro, and open source</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Features</div>
+<ul class="changelog-group-list">
+<li>Serve images from assets.malto.icu, show app version, add release&#x2F;deploy workflows</li>
+<li>Make mobile layout edge-to-edge with swipeable pricing cards</li>
+<li>Add Blink brand logo</li>
+<li>Show owner-account badge instead of a dead Remove Pro button</li>
+<li>Add OWNER_EMAILS allowlist for permanent Pro access</li>
+<li>Add sign-out button and shorten session lifetime to 7 days</li>
+<li>Blink Pro with Google OAuth-bound licensing</li>
+<li>Blink Pro with Lemon Squeezy licensing, passphrase, multi-view, and 25 MB files</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Use npm ci in release workflow
+
+Switch the release workflow from `npm install` to `npm ci` to ensure a clean, reproducible dependency install using the lockfile during CI releases.</li>
+<li>Update proxy-addr to 2.0.8
+
+Refresh the lockfile for the transitive proxy-addr dependency from 2.0.7 to 2.0.8, including the updated package metadata and the newly added OpenCollective funding entry.</li>
+<li>Add theme initialization and toggle functionality
+
+- Introduced theme-init.js to set the initial theme based on localStorage.
+- Added theme-toggle.js to handle theme switching between light and dark modes with appropriate SVG icons.
+- Implemented accessibility features for the theme toggle button.</li>
+<li>Update package-lock.json</li>
+<li>Add QR code sharing for Pro users
+
+Adds a Pro-only QR code sharing flow for generated links, including a QR button in the share UI and a scan modal that renders a QR code for the link. This also adds the qrcode-generator library and updates the pricing&#x2F;about copy and styling to advertise the new feature.</li>
+<li>Add FREE_USAGE_RATE_LIMIT and enforce free-tier limit
+
+Introduce FREE_USAGE_RATE_LIMIT (default 5&#x2F;day) and enforce it for anonymous creators. Updates: .env.example adds the new variable; docker-compose.yml exposes it to the service; server.js creates a freeUsageLimiter (IP-bucketed) and returns 429 when the free daily quota is exceeded; public&#x2F;index.html and public&#x2F;about.html update UI copy to document the new per-day limits; test&#x2F;api.test.js sets FREE_USAGE_RATE_LIMIT during tests.</li>
+<li>Show link fragment in emails &amp; pro notify UI
+
+Adds a PRO &#x27;Notify me when viewed&#x27; UI control and includes the last 8 hex chars of a secret&#x27;s UUID in OTP and view-notification emails so recipients can match emails to the correct share link. Implements an idFragment helper, passes the secret id into sendOTPEmail&#x2F;sendViewNotification, and generates the id earlier in &#x2F;api&#x2F;secret so OTP emails can reference it. Uses only the tail (non-sensitive) fragment and includes small copy&#x2F;layout tweaks.</li>
+
+</ul>
+</div>
+
+</article>
+<article class="changelog-entry" id="v1.0.0">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v1.0.0</h2>
+<time class="changelog-date" datetime="2026-07-08">July 08, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Apply Space Grotesk font to tabs, inputs, and buttons</li>
+<li>Improve file reveal meta text visibility</li>
+<li>Survive page refresh during OTP flow by caching K1 in sessionStorage</li>
+<li>Revert CSP beacon hashes — handled via Cloudflare Configuration Rule</li>
+<li>Allow Cloudflare beacon in CSP via domain + inline script hash</li>
+<li>Allow base64 padding in K1 regex — 32-byte key always ends with =</li>
+<li>Email template logo + title side by side with by MALTO text</li>
+<li>Email header matches site — logo + Blink + by MALTO side by side</li>
+<li>Center email OTP card content and add logo</li>
+<li>Add Cache-Control no-store to API responses</li>
+<li>Skip tab animation when clicking already active tab</li>
+<li>Fix logo-by spacing</li>
+<li>Move expiry toggle above divider</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Chores</div>
+<ul class="changelog-group-list">
+<li>Relicense from MIT to AGPL-3.0</li>
+<li>Add MIT license and live demo link to README</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Documentation</div>
+<ul class="changelog-group-list">
+<li>Update expiry references from fixed 48h to configurable 1-48h</li>
+<li> docs: update README with K4, new arch diagram, four-factor key table</li>
+<li>Update README for key splitting architecture and K3 bindin</li>
+<li>Update README with email OTP, 48h TTL, and rate limiting</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Features</div>
+<ul class="changelog-group-list">
+<li>Visual overhaul with atmosphere, contrast, and brand details</li>
+<li>Increase file sharing limit to 2 MB</li>
+<li>Warn before discarding uncoped link on tab switch or new secret</li>
+<li>Move install button to header on all pages with separator</li>
+<li>Add PWA support with install button and manifest-src CSP fix</li>
+<li>Add PWA support for desktop install</li>
+<li>Tests, security linting, toast errors, expiry options, byte counter, OG tags</li>
+<li>Add K4 server-side ciphertext encryption — mandatory fourth factor</li>
+<li>Add morgan request logging</li>
+<li>Add K3 HMAC binding to harden K2 at rest</li>
+<li>Secrets created counter on home page with count-up animation</li>
+<li>Email OTP with rate limiting and brute-force protection</li>
+<li>Email OTP verification for secret links</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Maintenance</div>
+<ul class="changelog-group-list">
+<li>Remove em dashes from UI copy and add About link to footer</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Update README.md</li>
+<li>Fix stale text, add 48h to warn-box, remove dead CSS</li>
+<li>Add slide animation on tab switch</li>
+<li>Refactor code structure for improved readability and maintainability</li>
+<li>Initial Commit</li>
+<li>Initial commit</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Refactor</div>
+<ul class="changelog-group-list">
+<li>Remove expiry feature and related code for simplification</li>
+
+</ul>
+</div>
+
+</article>
