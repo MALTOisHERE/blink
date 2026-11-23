@@ -727,9 +727,22 @@ const MAX_SECRETS      = 10_000;
 // docker-compose.yml). This caps the combined ciphertext size actually
 // held in memory at once, independent of how many secrets that is.
 const MAX_TOTAL_CIPHERTEXT_BYTES = Number(process.env.MAX_SECRETS_BYTES) || 256 * 1024 * 1024;
+// ciphertext is always base64 (ASCII-only), so .length (UTF-16 code units)
+// and its real byte count are numerically identical - Buffer.byteLength is
+// used anyway so this stays correct even if that ever changed, and reads
+// honestly as a byte count rather than a string-length stand-in for one.
+// It's still only the dominant cost for a *file* secret, though: a text
+// secret's own ciphertext is tiny, and this still ignores every other
+// stored field (iv, k2, k1Hash, ctIv, otpHash, filename, ...) plus each
+// entry's own Map/object overhead in V8 - all real bytes this number would
+// otherwise pretend don't exist. PER_SECRET_OVERHEAD_BYTES is a deliberately
+// generous fixed estimate covering that, so the total stays a safe upper
+// bound even for a store full of many small text secrets, not just a few
+// large file ones.
+const PER_SECRET_OVERHEAD_BYTES = 512;
 function totalStoredCiphertextBytes() {
   let total = 0;
-  for (const s of secrets.values()) total += s.ciphertext.length;
+  for (const s of secrets.values()) total += Buffer.byteLength(s.ciphertext, 'utf8') + PER_SECRET_OVERHEAD_BYTES;
   return total;
 }
 // Checked once up front (cheap fail-fast before any validation/scrypt/email
@@ -742,7 +755,7 @@ function totalStoredCiphertextBytes() {
 // final check has no await after it, so it's effectively atomic per request.
 function capacityExceeded(ciphertextLen) {
   return secrets.size >= MAX_SECRETS
-    || totalStoredCiphertextBytes() + ciphertextLen > MAX_TOTAL_CIPHERTEXT_BYTES;
+    || totalStoredCiphertextBytes() + ciphertextLen + PER_SECRET_OVERHEAD_BYTES > MAX_TOTAL_CIPHERTEXT_BYTES;
 }
 const ALLOWED_TTL_HOURS     = new Set([1, 6, 24, 48]);
 const ALLOWED_TTL_HOURS_PRO = new Set([1, 6, 24, 48, 168]);
