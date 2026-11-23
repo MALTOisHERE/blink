@@ -25,6 +25,16 @@ const { version: APP_VERSION } = require('./package.json');
 
 const app = express();
 
+// Every persisted file under the data directory (licenses, secrets/rate-limit
+// snapshots, stats) holds either real credentials or encrypted secret state,
+// so both the directory and the files themselves are created non-world/group
+// readable rather than left to the process umask. Each save goes through a
+// temp-file-then-rename (see saveLicenses() etc. below), so a file that
+// predates this restriction gets corrected to 0600 the next time it's saved,
+// not just on first creation.
+const SENSITIVE_DIR_MODE  = 0o700;
+const SENSITIVE_FILE_MODE = 0o600;
+
 // ── Trust reverse proxy (nginx, Cloudflare, etc.) ──────────────────────────
 // Two real hops sit between the visitor and this app: Cloudflare's edge,
 // then nginx - each one is a layer X-Forwarded-For has to be peeled back
@@ -277,7 +287,7 @@ const LICENSES_FILE = process.env.LICENSES_FILE || path.join(__dirname, 'data', 
 let licenses = {};
 
 try {
-  fs.mkdirSync(path.dirname(LICENSES_FILE), { recursive: true });
+  fs.mkdirSync(path.dirname(LICENSES_FILE), { recursive: true, mode: SENSITIVE_DIR_MODE });
   licenses = JSON.parse(fs.readFileSync(LICENSES_FILE, 'utf8'));
 } catch {}
 
@@ -305,7 +315,7 @@ try {
 function saveLicenses() {
   try {
     const tmp = LICENSES_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(licenses, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(licenses, null, 2), { mode: SENSITIVE_FILE_MODE });
     fs.renameSync(tmp, LICENSES_FILE);
   } catch (err) {
     logger.error({ err }, 'failed to persist licenses file');
@@ -689,7 +699,7 @@ function loadSecretsSnapshot() {
 function saveSecretsSnapshot() {
   try {
     const tmp = SECRETS_SNAPSHOT_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify([...secrets.entries()]));
+    fs.writeFileSync(tmp, JSON.stringify([...secrets.entries()]), { mode: SENSITIVE_FILE_MODE });
     fs.renameSync(tmp, SECRETS_SNAPSHOT_FILE);
     logger.info({ count: secrets.size }, 'secrets snapshotted for graceful restart');
   } catch (err) {
@@ -697,7 +707,7 @@ function saveSecretsSnapshot() {
   }
 }
 
-try { fs.mkdirSync(path.dirname(SECRETS_SNAPSHOT_FILE), { recursive: true }); } catch {}
+try { fs.mkdirSync(path.dirname(SECRETS_SNAPSHOT_FILE), { recursive: true, mode: SENSITIVE_DIR_MODE }); } catch {}
 loadSecretsSnapshot();
 
 // Same graceful-restart snapshot idea as the secrets Map above, but for
@@ -739,7 +749,7 @@ function saveRateLimitsSnapshot() {
     const byName = {};
     for (const limiter of allRateLimiters) byName[limiter.name] = limiter.serialize();
     const tmp = RATE_LIMITS_SNAPSHOT_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(byName));
+    fs.writeFileSync(tmp, JSON.stringify(byName), { mode: SENSITIVE_FILE_MODE });
     fs.renameSync(tmp, RATE_LIMITS_SNAPSHOT_FILE);
     logger.info('rate limiter state snapshotted for graceful restart');
   } catch (err) {
@@ -747,7 +757,7 @@ function saveRateLimitsSnapshot() {
   }
 }
 
-try { fs.mkdirSync(path.dirname(RATE_LIMITS_SNAPSHOT_FILE), { recursive: true }); } catch {}
+try { fs.mkdirSync(path.dirname(RATE_LIMITS_SNAPSHOT_FILE), { recursive: true, mode: SENSITIVE_DIR_MODE }); } catch {}
 loadRateLimitsSnapshot();
 
 // ── Statistics ───────────────────────────────────────────────────────────────
@@ -766,7 +776,7 @@ const STATS_DEFAULTS = {
 let stats = { ...STATS_DEFAULTS };
 
 try {
-  fs.mkdirSync(path.dirname(STATS_FILE), { recursive: true });
+  fs.mkdirSync(path.dirname(STATS_FILE), { recursive: true, mode: SENSITIVE_DIR_MODE });
   const raw = fs.readFileSync(STATS_FILE, 'utf8');
   stats = { ...STATS_DEFAULTS, ...JSON.parse(raw) };
 } catch {}
@@ -774,7 +784,7 @@ try {
 function saveStats() {
   try {
     const tmp = STATS_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(stats, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(stats, null, 2), { mode: SENSITIVE_FILE_MODE });
     fs.renameSync(tmp, STATS_FILE);
   } catch (err) {
     logger.error({ err }, 'failed to persist stats file');
