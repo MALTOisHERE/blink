@@ -35,18 +35,44 @@ const app = express();
 const SENSITIVE_DIR_MODE  = 0o700;
 const SENSITIVE_FILE_MODE = 0o600;
 
-// ── Trust reverse proxy (nginx, Cloudflare, etc.) ──────────────────────────
-// Two real hops sit between the visitor and this app: Cloudflare's edge,
-// then nginx - each one is a layer X-Forwarded-For has to be peeled back
-// through. Trusting only 1 (as this used to say) makes req.ip resolve to
-// Cloudflare's own edge IP, which rotates per-request even for the same
-// visitor - silently breaking every IP-keyed thing in this file (all five
-// rate limiters, and the `ip` field on every log line) since each request
-// lands in a different bucket that never accumulates. Verified empirically
-// against the exact X-Forwarded-For shape production actually sends
-// (stable visitor IP first, rotating Cloudflare edge IP second): trusting
-// 1 hop resolves to the rotating one, trusting 2 resolves to the real one.
-app.set('trust proxy', 2);
+// ── Trust reverse proxy (Docker bridge, plus whatever each deployment adds) ─
+// Used to be a bare hop count (`trust proxy, 2`): trusts the 2 rightmost
+// X-Forwarded-For entries unconditionally, no matter whose IP they actually
+// are. That only stays correct as long as the request path never changes -
+// if the origin ever became directly reachable, anyone could hand-craft a
+// 2-entry X-Forwarded-For and have Express believe whatever client IP they
+// put first.
+//
+// 'uniquelocal' is the one hop this project can assume for everyone: the
+// included docker-compose.yml always puts this behind a reverse proxy on
+// the same host, reached through Docker's own bridge network - Docker's
+// userland proxy (the host's published-port listener) connects in from the
+// bridge gateway (a private RFC1918 address), not literally 127.0.0.1, so
+// that hop needs trusting unconditionally for req.ip to resolve past
+// Docker's own NAT at all.
+//
+// Anything in front of that reverse proxy - a CDN, a tunnel, nothing - is a
+// per-deployment choice this project can't assume (Blink is self-hosted;
+// hard-coding one provider's IP ranges here would be wrong for anyone not
+// using it). TRUSTED_PROXIES lets each operator say what else to trust: a
+// comma-separated list of IPs/CIDRs, or the special values 'loopback' /
+// 'linklocal' / 'uniquelocal' that `proxy-addr` (Express's own trust-proxy
+// implementation) understands. For a deployment behind Cloudflare, for
+// example, that means Cloudflare's current published ranges - copy them
+// from https://www.cloudflare.com/ips/ when setting this up, not from
+// memory or an old copy, since they do change over time.
+//
+// Leaving TRUSTED_PROXIES unset trusts only the Docker-bridge hop, correct
+// for a deployment with nothing but the bundled reverse proxy in front -
+// but wrong (silently misattributing every visitor to one rotating edge IP,
+// breaking every IP-keyed rate limiter and the `ip` field on every log
+// line) for a deployment that adds a CDN/proxy in front of that without
+// also setting this.
+const TRUSTED_PROXIES = (process.env.TRUSTED_PROXIES || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.set('trust proxy', ['uniquelocal', ...TRUSTED_PROXIES]);
 
 // ── Request logging ──────────────────────────────────────────────────────────
 // Every request still gets req.log attached (route handlers log their own
@@ -78,9 +104,9 @@ app.use(pinoHttp({
   // pino-http's own req.remoteAddress reads the raw TCP socket, which behind
   // nginx/Cloudflare is always the reverse proxy's address, not the visitor's
   // - useless for "who actually did this." req.ip is Express's own address,
-  // already trust-proxy-aware (see app.set('trust proxy', 2) above, which
-  // the rate limiters already rely on for the same reason) and resolves to
-  // the real client IP. customProps runs per-request, so it sees the same
+  // already trust-proxy-aware (see the app.set('trust proxy', ...) call
+  // above, which the rate limiters already rely on for the same reason) and
+  // resolves to the real client IP. customProps runs per-request, so it sees the same
   // req.ip every route handler does. Added here, not as a replacement for
   // remoteAddress, so both are visible: `ip` for attribution, remoteAddress
   // for proxy-layer debugging if that's ever actually what's being debugged.

@@ -114,6 +114,7 @@ To pin a specific build (for example to roll back) instead of always running `la
 | `NODE_ENV` | `development` | Set to `production` to enable HTTPS redirect and HSTS |
 | `PORT` | `3000` | Port to listen on |
 | `HOST` | - | Your domain (e.g. `yourdomain.com`). Required in production |
+| `TRUSTED_PROXIES` | - | Extra IPs/CIDRs to trust client IPs from (e.g. a CDN's ranges), beyond the bundled reverse proxy. See `.env.example` |
 | `SECRET_KEY` | - | K3 - HMAC-masks K2 at rest. Generate with `openssl rand -hex 32` |
 | `CIPHER_KEY` | - | K4 - AES-encrypts ciphertext at rest. Generate with `openssl rand -hex 32` |
 | `RESEND_API_KEY` | - | Resend API key. Required for email OTP feature |

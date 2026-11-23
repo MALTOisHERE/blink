@@ -9,6 +9,7 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=${HOST}
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES}
       - SECRET_KEY=${SECRET_KEY}
       - CIPHER_KEY=${CIPHER_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
