@@ -2,6 +2,52 @@
 
 All notable changes to Blink, generated automatically from commit history on every release.
 
+## v2.1.0 - 2026-11-23
+
+### Bug Fixes
+
+- Pin Docker base image by digest instead of a floating tag
+
+- Validate structure of restored secrets-snapshot entries
+
+- Account for per-secret overhead in memory-capacity accounting
+
+- Harden OAuth sign-in (PKCE, per-provider cookies, fuller token checks, timeouts)
+
+- Make reverse-proxy trust configurable instead of hardcoding one hop count
+
+- Key OTP hashes with K3 instead of plain SHA-256
+
+- Close TOCTOU race in secret-creation capacity checks
+
+- Restrict permissions on persisted license/snapshot/stats files
+
+- Require SECRET_KEY/CIPHER_KEY in production instead of degrading silently
+
+
+### Documentation
+
+- Add GLOSSARY.md
+
+- Fix stale README line claiming CI auto-publishes images on push
+
+- Regenerate changelog for v2.0.10
+
+
+### Maintenance
+
+- Generate and attach an SBOM when publishing the image
+
+
+### Other
+
+- Constrain centered reveal cards
+
+Limit reveal, secret, expired, cleared, and file-reveal cards to 480px and center them, while keeping the OTP/passphrase entry card full-width.
+
+- Update manifest.json
+
+
 ## v2.0.10 - 2026-11-22
 
 ### Bug Fixes

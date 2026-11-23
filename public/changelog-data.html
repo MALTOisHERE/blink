@@ -1,5 +1,57 @@
 
 
+<article class="changelog-entry" id="v2.1.0">
+<div class="changelog-entry-head">
+<h2 class="changelog-version">v2.1.0</h2>
+<time class="changelog-date" datetime="2026-11-23">November 23, 2026</time>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Bug Fixes</div>
+<ul class="changelog-group-list">
+<li>Pin Docker base image by digest instead of a floating tag</li>
+<li>Validate structure of restored secrets-snapshot entries</li>
+<li>Account for per-secret overhead in memory-capacity accounting</li>
+<li>Harden OAuth sign-in (PKCE, per-provider cookies, fuller token checks, timeouts)</li>
+<li>Make reverse-proxy trust configurable instead of hardcoding one hop count</li>
+<li>Key OTP hashes with K3 instead of plain SHA-256</li>
+<li>Close TOCTOU race in secret-creation capacity checks</li>
+<li>Restrict permissions on persisted license&#x2F;snapshot&#x2F;stats files</li>
+<li>Require SECRET_KEY&#x2F;CIPHER_KEY in production instead of degrading silently</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Documentation</div>
+<ul class="changelog-group-list">
+<li>Add GLOSSARY.md</li>
+<li>Fix stale README line claiming CI auto-publishes images on push</li>
+<li>Regenerate changelog for v2.0.10</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Maintenance</div>
+<ul class="changelog-group-list">
+<li>Generate and attach an SBOM when publishing the image</li>
+
+</ul>
+</div>
+
+<div class="changelog-group">
+<div class="changelog-group-label">Other</div>
+<ul class="changelog-group-list">
+<li>Constrain centered reveal cards
+
+Limit reveal, secret, expired, cleared, and file-reveal cards to 480px and center them, while keeping the OTP&#x2F;passphrase entry card full-width.</li>
+<li>Update manifest.json</li>
+
+</ul>
+</div>
+
+</article>
 <article class="changelog-entry" id="v2.0.10">
 <div class="changelog-entry-head">
 <h2 class="changelog-version">v2.0.10</h2>
