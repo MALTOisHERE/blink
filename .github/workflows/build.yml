@@ -46,12 +46,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The sbom input below needs the docker-container driver (BuildKit
+      # attestation support) - the default "docker" driver on a bare runner
+      # doesn't support attaching attestations to a pushed image.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
       - name: Build and push
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           push: true
+          sbom: true
           tags: |
             ghcr.io/maltoishere/blink:latest
             ghcr.io/maltoishere/blink:${{ steps.vars.outputs.sha_short }}
