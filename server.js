@@ -1529,10 +1529,23 @@ app.use((err, req, res, _next) => {
 
 // ── Startup checks ────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
+  // K3/K4 are the only thing standing between a leaked snapshot and usable
+  // K2/ciphertext (see the comment above K3/K4's declaration) - silently
+  // running without them in production would contradict that guarantee, so
+  // this is fatal there instead of a warning. Non-production stays a warning
+  // so local dev/CI doesn't need either key set.
   if (!process.env.SECRET_KEY) {
+    if (process.env.NODE_ENV === 'production') {
+      logger.fatal('SECRET_KEY not set: required in production for K3 HMAC binding. Exiting.');
+      process.exit(1);
+    }
     logger.warn('SECRET_KEY not set: K3 HMAC binding is disabled (K2 stored unmasked)');
   }
   if (!process.env.CIPHER_KEY) {
+    if (process.env.NODE_ENV === 'production') {
+      logger.fatal('CIPHER_KEY not set: required in production for K4 ciphertext encryption. Exiting.');
+      process.exit(1);
+    }
     logger.warn('CIPHER_KEY not set: K4 ciphertext encryption is disabled');
   }
   if (!process.env.RESEND_API_KEY) {
