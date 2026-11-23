@@ -822,20 +822,23 @@ function loadSecretsSnapshot() {
 // (module-load time, before the "Validators" section below it), so
 // referencing it here would throw on startup.
 const SNAPSHOT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isNonEmptyString(v) { return typeof v === 'string' && v.length > 0; }
+function isNullableString(v) { return v === null || typeof v === 'string'; }
+function isNonNegativeInt(v)  { return Number.isInteger(v) && v >= 0; }
+
 function isValidSnapshotEntry(entry) {
   if (!Array.isArray(entry) || entry.length !== 2) return false;
   const [id, secret] = entry;
-  return SNAPSHOT_UUID_RE.test(id)
-    && secret && typeof secret === 'object'
-    && typeof secret.ciphertext === 'string' && secret.ciphertext.length > 0
-    && typeof secret.iv === 'string' && secret.iv.length > 0
-    && typeof secret.k2 === 'string' && secret.k2.length > 0
-    && (secret.k1Hash === null || typeof secret.k1Hash === 'string')
-    && (secret.ctIv === null || typeof secret.ctIv === 'string')
+  if (!SNAPSHOT_UUID_RE.test(id) || !secret || typeof secret !== 'object') return false;
+  return isNonEmptyString(secret.ciphertext)
+    && isNonEmptyString(secret.iv)
+    && isNonEmptyString(secret.k2)
+    && isNullableString(secret.k1Hash)
+    && isNullableString(secret.ctIv)
     && Number.isFinite(secret.expiresAt)
-    && Number.isInteger(secret.viewsLeft) && secret.viewsLeft >= 0
-    && Number.isInteger(secret.otpAttempts) && secret.otpAttempts >= 0
-    && Number.isInteger(secret.passAttempts) && secret.passAttempts >= 0
+    && isNonNegativeInt(secret.viewsLeft)
+    && isNonNegativeInt(secret.otpAttempts)
+    && isNonNegativeInt(secret.passAttempts)
     && typeof secret.isFile === 'boolean';
 }
 
