@@ -38,7 +38,7 @@ describe('Google OAuth callback (success path)', () => {
       // Check the more specific "/tokeninfo" prefix first - "tokeninfo"
       // itself starts with "token", so the order here matters.
       if (u.startsWith('https://oauth2.googleapis.com/tokeninfo')) {
-        return jsonResponse({ aud: 'google-client-id', email_verified: 'true', email: 'googleuser@example.com', sub: 'g-123' });
+        return jsonResponse({ aud: 'google-client-id', email_verified: 'true', email: 'googleuser@example.com', sub: 'g-123', iss: 'https://accounts.google.com', exp: Math.floor(Date.now() / 1000) + 300 });
       }
       if (u.startsWith('https://oauth2.googleapis.com/token')) {
         return jsonResponse({ id_token: 'fake-id-token' });
@@ -48,7 +48,7 @@ describe('Google OAuth callback (success path)', () => {
 
     const agent = request.agent(app);
     const start = await agent.get('/api/auth/google/start');
-    const stateCookie = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state='));
+    const stateCookie = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state_google='));
     const state = stateCookie.split('=')[1].split(';')[0];
 
     const callback = await agent.get(`/api/auth/google/callback?code=abc&state=${state}`);
@@ -64,7 +64,7 @@ describe('Google OAuth callback (success path)', () => {
     global.fetch = async (url) => {
       const u = String(url);
       if (u.startsWith('https://oauth2.googleapis.com/tokeninfo')) {
-        return jsonResponse({ aud: 'google-client-id', email_verified: 'false', email: 'unverified@example.com', sub: 'g-456' });
+        return jsonResponse({ aud: 'google-client-id', email_verified: 'false', email: 'unverified@example.com', sub: 'g-456', iss: 'https://accounts.google.com', exp: Math.floor(Date.now() / 1000) + 300 });
       }
       if (u.startsWith('https://oauth2.googleapis.com/token')) {
         return jsonResponse({ id_token: 'fake-id-token' });
@@ -74,7 +74,7 @@ describe('Google OAuth callback (success path)', () => {
 
     const agent = request.agent(app);
     const start = await agent.get('/api/auth/google/start');
-    const state = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state=')).split('=')[1].split(';')[0];
+    const state = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state_google=')).split('=')[1].split(';')[0];
 
     const callback = await agent.get(`/api/auth/google/callback?code=abc&state=${state}`);
     assert.equal(callback.headers.location, '/?auth=error');
@@ -102,7 +102,7 @@ describe('GitHub OAuth callback (success path)', () => {
 
     const agent = request.agent(app);
     const start = await agent.get('/api/auth/github/start');
-    const state = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state=')).split('=')[1].split(';')[0];
+    const state = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state_github=')).split('=')[1].split(';')[0];
 
     const callback = await agent.get(`/api/auth/github/callback?code=abc&state=${state}`);
     assert.equal(callback.status, 302);
@@ -127,7 +127,7 @@ describe('GitHub OAuth callback (success path)', () => {
 
     const agent = request.agent(app);
     const start = await agent.get('/api/auth/github/start');
-    const state = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state=')).split('=')[1].split(';')[0];
+    const state = start.headers['set-cookie'].find(c => c.startsWith('blink_oauth_state_github=')).split('=')[1].split(';')[0];
 
     const callback = await agent.get(`/api/auth/github/callback?code=abc&state=${state}`);
     assert.equal(callback.headers.location, '/?auth=error');

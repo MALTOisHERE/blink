@@ -33,7 +33,10 @@ describe('OAuth start redirects (configured)', () => {
     assert.equal(res.status, 302);
     assert.match(res.headers.location, /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/);
     assert.match(res.headers.location, /client_id=google-client-id/);
-    assert.ok(res.headers['set-cookie'].some(c => c.startsWith('blink_oauth_state=')));
+    assert.match(res.headers.location, /code_challenge=/);
+    assert.match(res.headers.location, /code_challenge_method=S256/);
+    assert.ok(res.headers['set-cookie'].some(c => c.startsWith('blink_oauth_state_google=')));
+    assert.ok(res.headers['set-cookie'].some(c => c.startsWith('blink_oauth_verifier_google=')));
   });
 
   test('GET /api/auth/github/start redirects to GitHub with a state cookie', async () => {
@@ -41,7 +44,10 @@ describe('OAuth start redirects (configured)', () => {
     assert.equal(res.status, 302);
     assert.match(res.headers.location, /^https:\/\/github\.com\/login\/oauth\/authorize\?/);
     assert.match(res.headers.location, /client_id=github-client-id/);
-    assert.ok(res.headers['set-cookie'].some(c => c.startsWith('blink_oauth_state=')));
+    assert.match(res.headers.location, /code_challenge=/);
+    assert.match(res.headers.location, /code_challenge_method=S256/);
+    assert.ok(res.headers['set-cookie'].some(c => c.startsWith('blink_oauth_state_github=')));
+    assert.ok(res.headers['set-cookie'].some(c => c.startsWith('blink_oauth_verifier_github=')));
   });
 });
 
@@ -55,7 +61,15 @@ describe('OAuth callback state validation', () => {
   test('github callback redirects to an error page when state does not match the cookie', async () => {
     const res = await request(app)
       .get('/api/auth/github/callback?code=abc&state=wrong')
-      .set('Cookie', 'blink_oauth_state=right');
+      .set('Cookie', 'blink_oauth_state_github=right');
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.location, '/?auth=error');
+  });
+
+  test('google callback redirects to an error page when the state matches but the PKCE verifier cookie is missing', async () => {
+    const res = await request(app)
+      .get('/api/auth/google/callback?code=abc&state=right')
+      .set('Cookie', 'blink_oauth_state_google=right');
     assert.equal(res.status, 302);
     assert.equal(res.headers.location, '/?auth=error');
   });

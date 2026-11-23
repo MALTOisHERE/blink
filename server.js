@@ -35,6 +35,16 @@ const app = express();
 const SENSITIVE_DIR_MODE  = 0o700;
 const SENSITIVE_FILE_MODE = 0o600;
 
+// Every call out to Lemon Squeezy/Google/GitHub below went through plain
+// fetch() with no timeout - if any of those ever hung (not even down, just
+// slow), the request handling it would hang right along with it, for as
+// long as the client stayed connected. AbortSignal.timeout() turns that
+// into a bounded, catchable error instead.
+const EXTERNAL_API_TIMEOUT_MS = 8_000;
+function fetchWithTimeout(url, options = {}) {
+  return fetch(url, { ...options, signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS) });
+}
+
 // ── Trust reverse proxy (Docker bridge, plus whatever each deployment adds) ─
 // Used to be a bare hop count (`trust proxy, 2`): trusts the 2 rightmost
 // X-Forwarded-For entries unconditionally, no matter whose IP they actually
@@ -248,7 +258,7 @@ function licenseMetaMatches(data) {
 }
 
 async function activateLicense(key, instanceName) {
-  const resp = await fetch('https://api.lemonsqueezy.com/v1/licenses/activate', {
+  const resp = await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/activate', {
     method:  'POST',
     headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
     body:    JSON.stringify({ license_key: key, instance_name: instanceName }),
@@ -262,7 +272,7 @@ async function activateLicense(key, instanceName) {
 }
 
 async function deactivateLicense(key, instanceId) {
-  await fetch('https://api.lemonsqueezy.com/v1/licenses/deactivate', {
+  await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/deactivate', {
     method:  'POST',
     headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
     body:    JSON.stringify({ license_key: key, instance_id: instanceId }),
@@ -280,7 +290,7 @@ async function checkLicenseInstance(key, instanceId) {
 
   let valid = false;
   try {
-    const resp = await fetch('https://api.lemonsqueezy.com/v1/licenses/validate', {
+    const resp = await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/validate', {
       method:  'POST',
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
       body:    JSON.stringify({ license_key: key, instance_id: instanceId }),
@@ -354,7 +364,24 @@ function saveLicenses() {
 const SESSION_SECRET     = process.env.SESSION_SECRET || null;
 const SESSION_COOKIE     = 'blink_session';
 const SESSION_MAX_AGE    = 7 * 24 * 3_600_000; // 7 days
-const OAUTH_STATE_COOKIE = 'blink_oauth_state';
+
+// Per-provider, not a single shared name: with one cookie, starting a Google
+// sign-in in one tab and a GitHub sign-in in another (or just retrying)
+// overwrites the first flow's state/verifier before its callback runs,
+// failing it with a false "mismatched state".
+function oauthStateCookieName(provider)    { return `blink_oauth_state_${provider}`; }
+function oauthVerifierCookieName(provider) { return `blink_oauth_verifier_${provider}`; }
+
+// PKCE (RFC 7636): binds the authorization code to this specific browser
+// round-trip, so a code that leaks somewhere along the redirect chain (a
+// referrer header, a proxy log) can't be replayed by someone who doesn't
+// also have the verifier. Both Google and GitHub document support for the
+// S256 challenge method on their standard OAuth authorization-code flow.
+function generatePkcePair() {
+  const verifier  = crypto.randomBytes(32).toString('base64url'); // 43 chars - meets RFC 7636's 43-128 range
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
 
 function parseCookies(header) {
   // Keys come straight from the raw Cookie header (attacker-controlled).
@@ -464,33 +491,40 @@ app.get('/api/auth/google/start', (req, res) => {
     return res.status(503).send('Google sign-in is not configured on this server.');
   }
   const state = crypto.randomBytes(24).toString('base64url');
-  res.append('Set-Cookie', `${OAUTH_STATE_COOKIE}=${state}; ${cookieAttrs(600)}`);
+  const { verifier, challenge } = generatePkcePair();
+  res.append('Set-Cookie', `${oauthStateCookieName('google')}=${state}; ${cookieAttrs(600)}`);
+  res.append('Set-Cookie', `${oauthVerifierCookieName('google')}=${verifier}; ${cookieAttrs(600)}`);
   const params = new URLSearchParams({
-    client_id:     GOOGLE_CLIENT_ID,
-    redirect_uri:  GOOGLE_REDIRECT_URI,
-    response_type: 'code',
-    scope:         'openid email',
+    client_id:             GOOGLE_CLIENT_ID,
+    redirect_uri:          GOOGLE_REDIRECT_URI,
+    response_type:         'code',
+    scope:                 'openid email',
     state,
-    prompt:        'select_account',
+    prompt:                'select_account',
+    code_challenge:        challenge,
+    code_challenge_method: 'S256',
   });
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
 });
 
 app.get('/api/auth/google/callback', async (req, res) => {
-  res.append('Set-Cookie', `${OAUTH_STATE_COOKIE}=; ${cookieAttrs(0)}`);
+  res.append('Set-Cookie', `${oauthStateCookieName('google')}=; ${cookieAttrs(0)}`);
+  res.append('Set-Cookie', `${oauthVerifierCookieName('google')}=; ${cookieAttrs(0)}`);
   if (!GOOGLE_AUTH_CONFIGURED) {
     req.log.warn('google oauth callback hit but not configured on this server');
     return res.status(503).send('Google sign-in is not configured on this server.');
   }
   const { code, state } = req.query;
-  const expectedState = parseCookies(req.headers.cookie)[OAUTH_STATE_COOKIE];
-  if (!code || !state || !expectedState || state !== expectedState) {
+  const cookies = parseCookies(req.headers.cookie);
+  const expectedState = cookies[oauthStateCookieName('google')];
+  const verifier       = cookies[oauthVerifierCookieName('google')];
+  if (!code || !state || !expectedState || state !== expectedState || !verifier) {
     req.log.warn('google oauth callback rejected: missing or mismatched state');
     return res.redirect('/?auth=error');
   }
 
   try {
-    const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+    const tokenResp = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
       method:  'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -499,6 +533,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
         client_secret: GOOGLE_CLIENT_SECRET,
         redirect_uri:  GOOGLE_REDIRECT_URI,
         grant_type:    'authorization_code',
+        code_verifier: verifier,
       }),
     });
     const tokenData = await tokenResp.json();
@@ -507,11 +542,18 @@ app.get('/api/auth/google/callback', async (req, res) => {
       return res.redirect('/?auth=error');
     }
 
-    // Verified via Google's tokeninfo endpoint rather than local JWKS/JWT
-    // verification — simpler, no extra dependency, fine at this volume.
-    const infoResp = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenData.id_token)}`);
+    // Google's own docs call tokeninfo a *debugging* endpoint ("may be
+    // throttled or otherwise subject to intermittent errors" in production)
+    // and don't document it as enforcing exp itself - both checked here
+    // explicitly rather than assumed. The real production-recommended path
+    // is local JWKS verification; tokeninfo is kept for now to avoid adding
+    // a JWT/JWKS dependency, but see the README/issue tracker for this as a
+    // follow-up.
+    const infoResp = await fetchWithTimeout(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenData.id_token)}`);
     const info = await infoResp.json();
-    if (info.aud !== GOOGLE_CLIENT_ID || info.email_verified !== 'true' || !info.sub) {
+    const issuerOk = info.iss === 'https://accounts.google.com' || info.iss === 'accounts.google.com';
+    const expOk    = Number(info.exp) > Date.now() / 1000;
+    if (info.aud !== GOOGLE_CLIENT_ID || info.email_verified !== 'true' || !info.sub || !issuerOk || !expOk) {
       req.log.warn('google oauth callback: tokeninfo failed verification');
       return res.redirect('/?auth=error');
     }
@@ -542,32 +584,39 @@ app.get('/api/auth/github/start', (req, res) => {
     return res.status(503).send('GitHub sign-in is not configured on this server.');
   }
   const state = crypto.randomBytes(24).toString('base64url');
-  res.append('Set-Cookie', `${OAUTH_STATE_COOKIE}=${state}; ${cookieAttrs(600)}`);
+  const { verifier, challenge } = generatePkcePair();
+  res.append('Set-Cookie', `${oauthStateCookieName('github')}=${state}; ${cookieAttrs(600)}`);
+  res.append('Set-Cookie', `${oauthVerifierCookieName('github')}=${verifier}; ${cookieAttrs(600)}`);
   const params = new URLSearchParams({
-    client_id:    GITHUB_CLIENT_ID,
-    redirect_uri: GITHUB_REDIRECT_URI,
-    scope:        'read:user user:email',
+    client_id:             GITHUB_CLIENT_ID,
+    redirect_uri:          GITHUB_REDIRECT_URI,
+    scope:                 'read:user user:email',
     state,
-    allow_signup: 'true',
+    allow_signup:          'true',
+    code_challenge:        challenge,
+    code_challenge_method: 'S256',
   });
   res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
 });
 
 app.get('/api/auth/github/callback', async (req, res) => {
-  res.append('Set-Cookie', `${OAUTH_STATE_COOKIE}=; ${cookieAttrs(0)}`);
+  res.append('Set-Cookie', `${oauthStateCookieName('github')}=; ${cookieAttrs(0)}`);
+  res.append('Set-Cookie', `${oauthVerifierCookieName('github')}=; ${cookieAttrs(0)}`);
   if (!GITHUB_AUTH_CONFIGURED) {
     req.log.warn('github oauth callback hit but not configured on this server');
     return res.status(503).send('GitHub sign-in is not configured on this server.');
   }
   const { code, state } = req.query;
-  const expectedState = parseCookies(req.headers.cookie)[OAUTH_STATE_COOKIE];
-  if (!code || !state || !expectedState || state !== expectedState) {
+  const cookies = parseCookies(req.headers.cookie);
+  const expectedState = cookies[oauthStateCookieName('github')];
+  const verifier       = cookies[oauthVerifierCookieName('github')];
+  if (!code || !state || !expectedState || state !== expectedState || !verifier) {
     req.log.warn('github oauth callback rejected: missing or mismatched state');
     return res.redirect('/?auth=error');
   }
 
   try {
-    const tokenResp = await fetch('https://github.com/login/oauth/access_token', {
+    const tokenResp = await fetchWithTimeout('https://github.com/login/oauth/access_token', {
       method:  'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
       body: new URLSearchParams({
@@ -575,6 +624,7 @@ app.get('/api/auth/github/callback', async (req, res) => {
         client_id:     GITHUB_CLIENT_ID,
         client_secret: GITHUB_CLIENT_SECRET,
         redirect_uri:  GITHUB_REDIRECT_URI,
+        code_verifier: verifier,
       }),
     });
     const tokenData = await tokenResp.json();
@@ -586,7 +636,7 @@ app.get('/api/auth/github/callback', async (req, res) => {
     // GitHub's /user endpoint only returns a public email if the account has
     // one set; the verified primary address lives in /user/emails instead,
     // and requires its own request with the "user:email" scope.
-    const emailsResp = await fetch('https://api.github.com/user/emails', {
+    const emailsResp = await fetchWithTimeout('https://api.github.com/user/emails', {
       headers: {
         'Authorization': `Bearer ${tokenData.access_token}`,
         'Accept':        'application/vnd.github+json',
