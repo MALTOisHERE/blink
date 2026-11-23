@@ -152,4 +152,50 @@ describe('Graceful-restart snapshot', () => {
     const fresh = require(SERVER_PATH);
     assert.equal(fresh.secrets.has(id), false, 'an expired secret should not be restored into the new process');
   });
+
+  test('a corrupted (non-JSON) snapshot file is discarded, not crashed on', async () => {
+    cleanupSnapshotFiles();
+    fs.writeFileSync(SECRETS_SNAPSHOT_FILE, 'this is not json{{{');
+
+    delete require.cache[SERVER_PATH];
+    const mod = require(SERVER_PATH); // must not throw
+    assert.equal(mod.secrets.size, 0);
+  });
+
+  test('a snapshot whose top level is not an array is discarded, not crashed on', async () => {
+    cleanupSnapshotFiles();
+    fs.writeFileSync(SECRETS_SNAPSHOT_FILE, JSON.stringify({ not: 'an array' }));
+
+    delete require.cache[SERVER_PATH];
+    const mod = require(SERVER_PATH);
+    assert.equal(mod.secrets.size, 0);
+  });
+
+  test('malformed entries in an otherwise-valid snapshot are skipped individually, a well-formed one alongside them still restores', async () => {
+    cleanupSnapshotFiles();
+
+    const before = require(SERVER_PATH);
+    const { payload } = makePayload('the one good entry');
+    const createRes = await request(before.app).post('/api/secret').send(payload);
+    assert.equal(createRes.status, 201);
+    const goodId = createRes.body.id;
+    const goodEntry = [...before.secrets.entries()].find(([id]) => id === goodId);
+
+    const future = Date.now() + 3_600_000;
+    const handCrafted = [
+      goodEntry,
+      ['not-a-uuid', { ciphertext: 'YWJj', iv: 'YWJj', k2: 'YWJj', expiresAt: future, viewsLeft: 1, otpAttempts: 0, passAttempts: 0, isFile: false }],
+      ['11111111-1111-4111-8111-111111111111', { ciphertext: 123, iv: 'YWJj', k2: 'YWJj', expiresAt: future, viewsLeft: 1, otpAttempts: 0, passAttempts: 0, isFile: false }], // ciphertext wrong type
+      ['22222222-2222-4222-8222-222222222222', { iv: 'YWJj', k2: 'YWJj', expiresAt: future, viewsLeft: 1, otpAttempts: 0, passAttempts: 0, isFile: false }], // ciphertext missing
+      ['33333333-3333-4333-8333-333333333333', { ciphertext: 'YWJj', iv: 'YWJj', k2: 'YWJj', expiresAt: future, viewsLeft: -1, otpAttempts: 0, passAttempts: 0, isFile: false }], // negative viewsLeft
+      'not even a pair',
+      null,
+    ];
+    fs.writeFileSync(SECRETS_SNAPSHOT_FILE, JSON.stringify(handCrafted));
+
+    delete require.cache[SERVER_PATH];
+    const mod = require(SERVER_PATH); // must not throw despite the garbage entries
+    assert.equal(mod.secrets.size, 1, 'only the one well-formed entry should have been restored');
+    assert.ok(mod.secrets.has(goodId));
+  });
 });

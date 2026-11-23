@@ -785,16 +785,58 @@ function loadSecretsSnapshot() {
     logger.error({ err }, 'secrets snapshot was corrupt, discarding it');
     return;
   }
+  if (!Array.isArray(entries)) {
+    logger.error({ type: typeof entries }, 'secrets snapshot was not an array, discarding it');
+    return;
+  }
 
   const now = Date.now();
   let restored = 0;
   let expired  = 0;
-  for (const [id, secret] of entries) {
+  let rejected = 0;
+  let capped   = 0;
+  for (const entry of entries) {
+    if (!isValidSnapshotEntry(entry)) { rejected++; continue; }
+    const [id, secret] = entry;
     if (secret.expiresAt <= now) { expired++; continue; }
+    // A corrupted or tampered snapshot could otherwise carry far more
+    // entries/bytes than MAX_SECRETS/MAX_TOTAL_CIPHERTEXT_BYTES allow for a
+    // live create - those caps exist to keep this server inside its
+    // container memory limit, so restoring past them would defeat the point.
+    if (capacityExceeded(secret.ciphertext.length)) { capped++; continue; }
     secrets.set(id, secret);
     restored++;
   }
-  logger.info({ restored, expired }, 'secrets restored from graceful-shutdown snapshot');
+  logger.info({ restored, expired, rejected, capped }, 'secrets restored from graceful-shutdown snapshot');
+}
+
+// Structural sanity check on one [id, secret] pair from a restored snapshot,
+// not a full semantic re-validation (a K4-wrapped ciphertext's length, for
+// example, doesn't follow the same bounds POST /api/secret enforces on a
+// fresh submission) - just enough to guarantee every field this file
+// actually reads later (ciphertext.length, expiresAt comparisons, etc.)
+// is the type it's assumed to be, so a corrupted or hand-edited snapshot
+// can't crash the server or silently create an unusable/malformed secret.
+// Inlined rather than reusing the shared UUID_RE further down this file:
+// that constant isn't defined yet at the point loadSecretsSnapshot() runs
+// (module-load time, before the "Validators" section below it), so
+// referencing it here would throw on startup.
+const SNAPSHOT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isValidSnapshotEntry(entry) {
+  if (!Array.isArray(entry) || entry.length !== 2) return false;
+  const [id, secret] = entry;
+  return SNAPSHOT_UUID_RE.test(id)
+    && secret && typeof secret === 'object'
+    && typeof secret.ciphertext === 'string' && secret.ciphertext.length > 0
+    && typeof secret.iv === 'string' && secret.iv.length > 0
+    && typeof secret.k2 === 'string' && secret.k2.length > 0
+    && (secret.k1Hash === null || typeof secret.k1Hash === 'string')
+    && (secret.ctIv === null || typeof secret.ctIv === 'string')
+    && Number.isFinite(secret.expiresAt)
+    && Number.isInteger(secret.viewsLeft) && secret.viewsLeft >= 0
+    && Number.isInteger(secret.otpAttempts) && secret.otpAttempts >= 0
+    && Number.isInteger(secret.passAttempts) && secret.passAttempts >= 0
+    && typeof secret.isFile === 'boolean';
 }
 
 function saveSecretsSnapshot() {
