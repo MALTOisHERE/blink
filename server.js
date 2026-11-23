@@ -860,6 +860,19 @@ function deriveK3Mask(id) {
   return crypto.createHmac('sha256', K3).update(id).digest();
 }
 
+// A plain SHA-256(otp) hash is only 1,000,000 possibilities - anyone who
+// gets a secrets snapshot can brute-force every OTP in it offline in well
+// under a second, no server interaction (and so no 5-attempt limit) needed.
+// Keying the hash with K3, derived with domain separation so it can never
+// collide with deriveK3Mask's own output, means the snapshot alone is no
+// longer enough - same server secret an attacker would already need to use
+// the snapshot's K2/ciphertext at all. Binding to the secret id stops two
+// secrets that happen to draw the same 6-digit code from hashing identically.
+const OTP_HMAC_KEY = K3 ? crypto.createHmac('sha256', K3).update('blink-otp-hmac-v1').digest() : Buffer.alloc(32);
+function hashOtp(otp, id) {
+  return crypto.createHmac('sha256', OTP_HMAC_KEY).update(id).update(otp).digest('hex');
+}
+
 function encryptWithK4(ciphertextB64) {
   const ct  = Buffer.from(ciphertextB64, 'base64');
   const iv  = crypto.randomBytes(12);
@@ -1278,7 +1291,7 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
     }
 
     const otp = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
-    otpHash   = crypto.createHash('sha256').update(otp).digest('hex');
+    otpHash   = hashOtp(otp, id);
     try {
       await sendOTPEmail(recipientEmail, otp, id, viewsAllowed, expiresInHours);
       stats.emailsSent++;
@@ -1439,7 +1452,7 @@ app.get('/api/secret/:id', readLimiter.middleware(), (req, res) => {
     if (!/^\d{6}$/.test(otp)) {
       return res.status(403).json({ error: 'invalid_otp' });
     }
-    const inputHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const inputHash = hashOtp(otp, id);
     const valid     = crypto.timingSafeEqual(
       Buffer.from(secret.otpHash, 'hex'),
       Buffer.from(inputHash,      'hex')
