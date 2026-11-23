@@ -1662,6 +1662,16 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 }
 .loading-box p { color: var(--text-muted); font-size: .9rem; }
 
+/* These cards sit inside .view-main's 1400px-wide column, same as the
+   about/changelog/index pages' own content - but unlike those, each one
+   holds a single small block of centered text, so left unconstrained it
+   stretches into one huge, mostly-empty glass panel. The OTP/passphrase
+   entry card (.otp-card) is kept full-width on purpose, not an oversight. */
+.reveal-card, .secret-card, .expired-card, .cleared-card, .file-reveal-card {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
 /* Reveal state */
 .reveal-card {
   background: var(--glass-bg);
