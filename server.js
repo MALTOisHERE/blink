@@ -656,6 +656,18 @@ function totalStoredCiphertextBytes() {
   for (const s of secrets.values()) total += s.ciphertext.length;
   return total;
 }
+// Checked once up front (cheap fail-fast before any validation/scrypt/email
+// work) and again right before secrets.set() in POST /api/secret. Two calls
+// because the handler's only await - sending the OTP email, when the request
+// asks for one - sits between them: without a check on both sides of it,
+// concurrent requests already past the first check could all still be
+// in-flight when they each reach secrets.set(), overrunning both caps before
+// any of them is reflected in secrets.size/totalStoredCiphertextBytes(). The
+// final check has no await after it, so it's effectively atomic per request.
+function capacityExceeded(ciphertextLen) {
+  return secrets.size >= MAX_SECRETS
+    || totalStoredCiphertextBytes() + ciphertextLen > MAX_TOTAL_CIPHERTEXT_BYTES;
+}
 const ALLOWED_TTL_HOURS     = new Set([1, 6, 24, 48]);
 const ALLOWED_TTL_HOURS_PRO = new Set([1, 6, 24, 48, 168]);
 const DEFAULT_TTL_HOURS = 48;
@@ -1184,13 +1196,8 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
     }
   }
 
-  if (secrets.size >= MAX_SECRETS) {
-    req.log.error({ secretsInMemory: secrets.size, cap: MAX_SECRETS }, 'server at secret capacity, rejecting create');
-    return res.status(503).json({ error: 'Server is at capacity. Try again shortly.' });
-  }
-
-  if (totalStoredCiphertextBytes() + ciphertext.length > MAX_TOTAL_CIPHERTEXT_BYTES) {
-    req.log.error({ bytesInMemory: totalStoredCiphertextBytes(), cap: MAX_TOTAL_CIPHERTEXT_BYTES }, 'server at memory capacity, rejecting create');
+  if (capacityExceeded(ciphertext.length)) {
+    req.log.error({ secretsInMemory: secrets.size, bytesInMemory: totalStoredCiphertextBytes() }, 'server at capacity, rejecting create');
     return res.status(503).json({ error: 'Server is at capacity. Try again shortly.' });
   }
 
@@ -1297,6 +1304,15 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
   let ctIv     = null;
   if (K4) {
     ({ encCt: storedCt, ctIv } = encryptWithK4(ciphertext));
+  }
+
+  // Re-checked here, after the only await in this handler (the OTP email
+  // send above) - see capacityExceeded()'s comment. A reject at this point
+  // is rarer and means an OTP email may already be in the recipient's inbox
+  // for a secret that was never stored; logged distinctly so that's visible.
+  if (capacityExceeded(ciphertext.length)) {
+    req.log.error({ secretsInMemory: secrets.size, bytesInMemory: totalStoredCiphertextBytes() }, 'server reached capacity while this create request was in flight, rejecting');
+    return res.status(503).json({ error: 'Server is at capacity. Try again shortly.' });
   }
 
   const filename = isFileSecret ? rawFilename.trim() : null;
