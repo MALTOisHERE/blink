@@ -3,19 +3,20 @@
 // ── Blink server ─────────────────────────────────────────────────────────────
 // Express app for the whole backend: creating/revealing view-once encrypted
 // secrets, the optional passphrase/email-OTP gates on a reveal, Pro
-// licensing (Lemon Squeezy) behind Google/GitHub sign-in, rate limiting, and
-// the in-memory store with graceful-restart snapshotting. See the README's
-// "Key architecture" section for the K1-K4 model this file implements; this
-// is the only place K3/K4 and the license store live. AES-GCM decryption
-// itself never happens here, on purpose - this server only ever sees
-// ciphertext and key *halves*, never the complete key or any plaintext; see
-// unmaskK2() below and clientDecrypt() in public/view.js.
+// licensing (Paddle subscriptions) behind Google/GitHub sign-in, rate
+// limiting, and the in-memory store with graceful-restart snapshotting. See
+// the README's "Key architecture" section for the K1-K4 model this file
+// implements; this is the only place K3/K4 and the license store live.
+// AES-GCM decryption itself never happens here, on purpose - this server
+// only ever sees ciphertext and key *halves*, never the complete key or any
+// plaintext; see unmaskK2() below and clientDecrypt() in public/view.js.
 
 const express      = require('express');
 const crypto       = require('node:crypto');
 const fs           = require('node:fs');
 const path         = require('node:path');
 const { Resend }   = require('resend');
+const { Paddle, Environment } = require('@paddle/paddle-node-sdk');
 const pinoHttp     = require('pino-http');
 
 const { RateLimiter }  = require('./lib/ratelimiter');
@@ -232,100 +233,103 @@ const freeUsageLimiter = new RateLimiter(86_400_000, parseInt(process.env.FREE_U
 // the limiters themselves are otherwise unrelated and bucket independently.
 const allRateLimiters = [createLimiter, readLimiter, emailLimiter, licenseUsageLimiter, freeUsageLimiter];
 
-// ── Blink Pro licensing (Lemon Squeezy + Google/GitHub Sign-In) ─────────────
-// The license key and its Lemon Squeezy instance ID live ONLY on the server,
-// keyed by a hash of the signed-in account's verified email — never in the
-// browser. The browser only ever holds a signed session cookie proving "this
-// email is logged in right now." Keying by email (rather than a
-// provider-specific account ID) is deliberate: it's what makes Google and
-// GitHub sign-in resolve to the SAME Pro account whenever both are verified
-// for the same address. Two different emails are, correctly, two different
-// accounts — no linking happens unless the email itself matches.
-// A raw license key + instance ID pasted into a chat is just two
-// copy-pasteable strings; a live OAuth login is not something people hand
-// out the same way, which is what actually stops casual key sharing.
-// Set the Lemon Squeezy product's Activation Limit to 1 so a key can only
-// ever be bound to one account (one email) at a time.
-const LS_STORE_ID    = process.env.LS_STORE_ID   ? Number(process.env.LS_STORE_ID)   : null;
-const LS_PRODUCT_ID  = process.env.LS_PRODUCT_ID ? Number(process.env.LS_PRODUCT_ID) : null;
-const PRO_DEV_KEY    = process.env.BLINK_PRO_DEV_KEY || null;
+// ── Blink Pro licensing (Paddle subscriptions + Google/GitHub Sign-In) ──────
+// Unlike Lemon Squeezy, Paddle has no hosted "license key" API - no
+// activate/deactivate/validate endpoints to call. Blink mints and checks its
+// own keys instead; a Paddle webhook (POST /api/webhooks/paddle, below) is
+// the ONLY thing that ever creates one or flips its status, driven by real
+// subscription events, never by this server polling Paddle.
+//
+// The key itself lives ONLY on the server, keyed by a hash of the signed-in
+// account's verified email — never in the browser. The browser only ever
+// holds a signed session cookie proving "this email is logged in right
+// now." Keying by email (rather than a provider-specific account ID) is
+// deliberate: it's what makes Google and GitHub sign-in resolve to the SAME
+// Pro account whenever both are verified for the same address. Two
+// different emails are, correctly, two different accounts — no linking
+// happens unless the email itself matches.
+// A raw license key pasted into a chat is just a copy-pasteable string; a
+// live OAuth login is not something people hand out the same way, which is
+// what actually stops casual key sharing - enforced below by rejecting
+// activation onto a second account (paddleLicenses[key].boundAccountHash),
+// the local equivalent of Lemon Squeezy's "Activation Limit = 1".
+const PADDLE_API_KEY        = process.env.PADDLE_API_KEY        || null;
+const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET || null;
+// Only used by the webhook handler below to verify signatures and (for
+// subscription events) look up the paying customer's email - never to
+// create a checkout; the browser opens checkout itself via Paddle.js and
+// the public PADDLE_CLIENT_TOKEN (see GET /api/config), so this key never
+// needs to reach the frontend.
+const paddleClient = PADDLE_API_KEY
+  ? new Paddle(PADDLE_API_KEY, { environment: process.env.PADDLE_ENV === 'sandbox' ? Environment.sandbox : Environment.production })
+  : null;
+const PRO_DEV_KEY = process.env.BLINK_PRO_DEV_KEY || null;
 // Site owner allowlist — these accounts (by email, either sign-in provider)
-// always have Pro, no license or Lemon Squeezy involved. Safer than a shared
+// always have Pro, no license or Paddle involved. Safer than a shared
 // bearer key for this: even if the env var leaked, it only grants Pro to a
 // specific real, provider-verified email, not to anyone who happens to read
 // the value. Comma-separated in OWNER_EMAILS.
 const OWNER_EMAILS = new Set(
   (process.env.OWNER_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 );
-const LICENSE_KEY_RE      = /^[A-Za-z0-9-]{8,64}$/;
-const LICENSE_INSTANCE_RE = /^[A-Za-z0-9-]{1,64}$/;
-const LICENSE_CACHE_TTL = 3_600_000; // 1 hour
-const licenseCache = new Map(); // "key:instanceId" -> { valid, exp }
+const LICENSE_KEY_RE = /^[A-Za-z0-9-]{8,64}$/;
 
-// The next three functions are thin wrappers around Lemon Squeezy's hosted
-// license API (activate/deactivate/validate a key against their servers) -
-// this app never stores or checks license validity on its own.
-function licenseMetaMatches(data) {
-  return (!LS_STORE_ID   || data?.meta?.store_id   === LS_STORE_ID)
-      && (!LS_PRODUCT_ID || data?.meta?.product_id === LS_PRODUCT_ID);
+// Four groups of 5 base32-ish characters, e.g. "BLINK-7F3KQ-9M2XH-4YTRZ-C8WPL" -
+// readable over email, unambiguous enough to type back in by hand, and well
+// inside LICENSE_KEY_RE above.
+function generateLicenseKey() {
+  const raw = crypto.randomBytes(16).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return `BLINK-${raw.slice(0, 20).match(/.{1,5}/g).join('-')}`;
 }
 
-async function activateLicense(key, instanceName) {
-  const resp = await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/activate', {
-    method:  'POST',
-    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ license_key: key, instance_name: instanceName }),
-  });
-  const data   = await resp.json();
-  const status = data?.license_key?.status;
-  const ok = data?.activated === true
-    && status !== 'expired' && status !== 'disabled'
-    && licenseMetaMatches(data);
-  return { ok, instanceId: data?.instance?.id || null, error: data?.error || null };
-}
-
-async function deactivateLicense(key, instanceId) {
-  await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/deactivate', {
-    method:  'POST',
-    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ license_key: key, instance_id: instanceId }),
-  });
-}
-
-async function checkLicenseInstance(key, instanceId) {
-  if (typeof key !== 'string' || !LICENSE_KEY_RE.test(key)) return false;
-  if (PRO_DEV_KEY && key === PRO_DEV_KEY) return true;
-  if (typeof instanceId !== 'string' || !LICENSE_INSTANCE_RE.test(instanceId)) return false;
-
-  const cacheKey = `${key}:${instanceId}`;
-  const cached = licenseCache.get(cacheKey);
-  if (cached && Date.now() < cached.exp) return cached.valid;
-
-  let valid = false;
-  try {
-    const resp = await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/validate', {
-      method:  'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ license_key: key, instance_id: instanceId }),
-    });
-    const data   = await resp.json();
-    const status = data?.license_key?.status;
-    valid = data?.valid === true
-      && !!data?.instance
-      && status !== 'expired' && status !== 'disabled'
-      && licenseMetaMatches(data);
-  } catch (err) {
-    logger.error({ err, licenseFragment: key.slice(-6) }, 'license validation request failed');
-    // Lemon Squeezy unreachable: honour a stale cache entry rather than lock out a paying user
-    if (cached) return cached.valid;
-    return false;
+// Mints a fresh key for a newly-activated Paddle subscription. Idempotent by
+// subscriptionId: Paddle delivers webhooks at-least-once, so a retried
+// subscription.activated must never issue a second key for the same
+// subscription - it just returns the one already on file.
+function issueLicenseKey(email, subscriptionId) {
+  for (const [key, record] of Object.entries(paddleLicenses)) {
+    if (record.subscriptionId === subscriptionId) return key;
   }
+  let key;
+  do { key = generateLicenseKey(); } while (paddleLicenses[key]);
+  paddleLicenses[key] = { email, subscriptionId, status: 'active', boundAccountHash: null, issuedAt: Date.now() };
+  savePaddleLicenses();
+  return key;
+}
 
-  licenseCache.set(cacheKey, { valid, exp: Date.now() + LICENSE_CACHE_TTL });
-  if (licenseCache.size > 5_000) {
-    licenseCache.delete(licenseCache.keys().next().value);
+// Mirrors a subscription's current Paddle status onto every license key
+// issued for it - in practice exactly one, but matching on subscriptionId
+// rather than assuming that keeps this correct even if that ever changes.
+function updateSubscriptionStatus(subscriptionId, status) {
+  for (const record of Object.values(paddleLicenses)) {
+    if (record.subscriptionId === subscriptionId) record.status = status;
   }
-  return valid;
+  savePaddleLicenses();
+}
+
+// Binds `key` to `accountHash`, enforcing a one-account-per-key limit purely
+// from local state - no network call, so nothing here can be "unavailable".
+function activateLicense(key, accountHash) {
+  const record = paddleLicenses[key];
+  if (record?.status !== 'active') return { ok: false, error: 'invalid' };
+  if (record.boundAccountHash && record.boundAccountHash !== accountHash) {
+    return { ok: false, error: 'activation_limit' };
+  }
+  record.boundAccountHash = accountHash;
+  savePaddleLicenses();
+  return { ok: true };
+}
+
+function deactivateLicense(key, accountHash) {
+  const record = paddleLicenses[key];
+  if (record && record.boundAccountHash === accountHash) {
+    record.boundAccountHash = null;
+    savePaddleLicenses();
+  }
+}
+
+function isLicenseValid(key) {
+  return paddleLicenses[key]?.status === 'active';
 }
 
 // ── Persistent license store, keyed by a hash of the account's verified email ──
@@ -368,6 +372,32 @@ function saveLicenses() {
     fs.renameSync(tmp, LICENSES_FILE);
   } catch (err) {
     logger.error({ err }, 'failed to persist licenses file');
+  }
+}
+
+// ── Persistent Paddle license registry, keyed by the license key itself ────
+// { [licenseKey]: { email, subscriptionId, status, boundAccountHash, issuedAt } }
+// The global source of truth for "does this key exist and is it currently
+// active" - `licenses` above only ever stores which key an ACCOUNT has
+// bound, not whether that key is still good, which is why both stores exist
+// side by side. Separate file from LICENSES_FILE so upgrading a deployment
+// from Lemon Squeezy/Polar never has to migrate or guess at an old record's
+// shape - Pro accounts simply re-activate with a freshly-issued Paddle key.
+const PADDLE_LICENSES_FILE = process.env.PADDLE_LICENSES_FILE || path.join(__dirname, 'data', 'paddle-licenses.json');
+let paddleLicenses = {};
+
+try {
+  fs.mkdirSync(path.dirname(PADDLE_LICENSES_FILE), { recursive: true, mode: SENSITIVE_DIR_MODE });
+  paddleLicenses = JSON.parse(fs.readFileSync(PADDLE_LICENSES_FILE, 'utf8'));
+} catch {}
+
+function savePaddleLicenses() {
+  try {
+    const tmp = PADDLE_LICENSES_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(paddleLicenses, null, 2), { mode: SENSITIVE_FILE_MODE });
+    fs.renameSync(tmp, PADDLE_LICENSES_FILE);
+  } catch (err) {
+    logger.error({ err }, 'failed to persist paddle-licenses file');
   }
 }
 
@@ -486,7 +516,8 @@ async function isProForSession(session) {
   if (session.email && OWNER_EMAILS.has(session.email.toLowerCase())) return true;
   const record = licenses[session.sub];
   if (!record) return false;
-  return checkLicenseInstance(record.licenseKey, record.instanceId);
+  if (PRO_DEV_KEY && record.licenseKey === PRO_DEV_KEY) return true;
+  return isLicenseValid(record.licenseKey);
 }
 
 // ── Google OAuth (server-side redirect flow — no client-side Google JS SDK,
@@ -1208,13 +1239,117 @@ async function sendViewNotification(to, viewsLeft, id) {
   if (error) throw new Error(error.message);
 }
 
+async function sendLicenseKeyEmail(to, key) {
+  const { error } = await resendClient.emails.send({
+    from:    process.env.EMAIL_FROM || 'Blink <noreply@malto.icu>',
+    to,
+    subject: '[Blink - Pro] Your Blink Pro license key',
+    html: `
+      <div style="margin:0;padding:0;background:#f5f5f5;">
+        ${preheader(`Your Blink Pro license key: ${key}`)}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;"><tr><td align="center" style="padding:36px 16px;">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#ffffff;border:1px solid rgba(0,0,0,0.10);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            ${emailHeader('Pro')}
+            <tr><td style="padding:26px 28px 20px;text-align:center;">
+              <p style="margin:0 0 20px;font-size:15px;color:#111111;line-height:1.5;">Thanks for upgrading to Blink Pro. Sign in with Google or GitHub on the Blink site, open the Pro panel, and paste this key in to activate it on your account:</p>
+              <div style="background:#f0f0f0;border:1px solid rgba(0,0,0,0.10);border-top:2px solid rgba(97,207,90,.5);border-radius:10px;padding:20px 16px;">
+                <span style="font-family:ui-monospace,'SF Mono',Consolas,'Courier New',monospace;font-size:17px;font-weight:700;letter-spacing:1px;color:#2f9e2a;word-break:break-all;">${key}</span>
+              </div>
+              <p style="margin:16px 0 0;font-size:11px;color:#b5b9bf;line-height:1.6;">This key activates on one account at a time. Didn't subscribe? Contact support and we'll sort it out.</p>
+            </td></tr>
+            ${emailFooter()}
+          </table>
+        </td></tr></table>
+      </div>
+    `,
+  });
+  if (error) throw new Error(error.message);
+}
+
+// ── POST /api/webhooks/paddle ────────────────────────────────────────────────
+// The only thing that ever issues or revokes a Blink Pro license key. Paddle
+// delivers webhooks at-least-once and retries anything that doesn't answer
+// 2xx within 5 seconds, so every branch below is an idempotent upsert keyed
+// on Paddle's own subscription id (issueLicenseKey/updateSubscriptionStatus)
+// rather than anything that could double-fire on a retried delivery. A
+// signature failure and a handler error both fall through to the same
+// non-2xx response on purpose — Paddle retries either way, and a rotated
+// secret recovers automatically on the next attempt once redeployed; trying
+// to tell "forged" apart from "broke" here would be guessing.
+app.post('/api/webhooks/paddle', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
+  if (!paddleClient || !PADDLE_WEBHOOK_SECRET) {
+    req.log.error('Paddle webhook received but PADDLE_API_KEY/PADDLE_WEBHOOK_SECRET is not configured');
+    return res.status(503).end();
+  }
+  const signature = req.headers['paddle-signature'];
+  const rawBody    = req.body;
+  if (typeof signature !== 'string' || !Buffer.isBuffer(rawBody) || rawBody.length === 0) {
+    return res.status(400).end();
+  }
+
+  let event;
+  try {
+    event = await paddleClient.webhooks.unmarshal(rawBody.toString('utf8'), PADDLE_WEBHOOK_SECRET, signature);
+  } catch (err) {
+    req.log.warn({ err: err.message }, 'Paddle webhook signature verification failed');
+    return res.status(401).end();
+  }
+  if (!event) return res.status(200).end();
+
+  try {
+    switch (event.eventType) {
+      // Fires once Paddle has actually billed the customer - unlike
+      // subscription.created, which fires immediately on checkout before
+      // payment is confirmed. This is the one place a key gets minted.
+      case 'subscription.activated': {
+        const sub = event.data;
+        const customer = await paddleClient.customers.get(sub.customerId);
+        const email = customer?.email || null;
+        const key = issueLicenseKey(email, sub.id);
+        if (email) {
+          try { await sendLicenseKeyEmail(email, key); }
+          catch (err) { req.log.error({ err, subscriptionId: sub.id }, 'failed to send Paddle license key email'); }
+        } else {
+          req.log.warn({ subscriptionId: sub.id }, 'Paddle subscription activated with no customer email on file');
+        }
+        req.log.info({ subscriptionId: sub.id }, 'Paddle license key issued');
+        break;
+      }
+      case 'subscription.canceled':
+        updateSubscriptionStatus(event.data.id, 'canceled');
+        req.log.info({ subscriptionId: event.data.id }, 'Paddle subscription canceled');
+        break;
+      case 'subscription.past_due':
+        updateSubscriptionStatus(event.data.id, 'past_due');
+        req.log.info({ subscriptionId: event.data.id }, 'Paddle subscription past due');
+        break;
+      case 'subscription.updated': {
+        // Paddle's own status is the single source of truth here - covers
+        // e.g. a past_due subscription paying successfully and resuming.
+        const sub = event.data;
+        if (['active', 'trialing'].includes(sub.status)) updateSubscriptionStatus(sub.id, 'active');
+        else if (sub.status === 'canceled') updateSubscriptionStatus(sub.id, 'canceled');
+        else if (sub.status === 'past_due') updateSubscriptionStatus(sub.id, 'past_due');
+        break;
+      }
+      default:
+        break; // subscribed to an event we don't act on - not an error
+    }
+  } catch (err) {
+    req.log.error({ err, eventType: event.eventType }, 'Paddle webhook handler failed');
+    return res.status(500).end();
+  }
+
+  res.status(200).end();
+});
+
 // ── POST /api/license/activate ───────────────────────────────────────────────
 // Requires a verified session (Google or GitHub). Binds the submitted key to
-// THIS account's email — the Lemon Squeezy product's Activation Limit (set
-// to 1) enforces that no other account can ever activate the same key. The
-// key and instance ID are stored server-side only; the browser never
-// receives them.
-app.post('/api/license/activate', createLimiter.middleware(), jsonSmall, async (req, res) => {
+// THIS account's email — activateLicense() enforces that no other account
+// can already hold the same key, the local equivalent of Lemon Squeezy's
+// "Activation Limit = 1". The key is stored server-side only; the browser
+// never receives it back.
+app.post('/api/license/activate', createLimiter.middleware(), jsonSmall, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const session = readSession(req);
   if (!session) {
@@ -1230,7 +1365,7 @@ app.post('/api/license/activate', createLimiter.middleware(), jsonSmall, async (
   const existing = licenses[subHash];
 
   if (PRO_DEV_KEY && key === PRO_DEV_KEY) {
-    licenses[subHash] = { licenseKey: key, instanceId: 'dev', email: session.email || null, activatedAt: Date.now() };
+    licenses[subHash] = { licenseKey: key, email: session.email || null, activatedAt: Date.now() };
     saveLicenses();
     req.log.info({ account: subHash, dev: true }, 'license activated');
     return res.json({ valid: true });
@@ -1242,36 +1377,28 @@ app.post('/api/license/activate', createLimiter.middleware(), jsonSmall, async (
     return res.json({ valid: true });
   }
 
-  // Switching to a different key: free the old slot first (best-effort).
+  // Switching to a different key: free the old slot first.
   if (existing) {
-    try { await deactivateLicense(existing.licenseKey, existing.instanceId); }
-    catch (err) { req.log.error({ err, account: subHash }, 'failed to deactivate previous license before switching keys'); }
+    deactivateLicense(existing.licenseKey, subHash);
     delete licenses[subHash];
     req.log.info({ account: subHash }, 'license deactivated (switching keys)');
   }
 
-  try {
-    const { ok, instanceId, error } = await activateLicense(key, `account-${subHash}`);
-    if (!ok) {
-      saveLicenses();
-      const limitReached = /activation limit/i.test(error || '');
-      req.log.warn({ account: subHash, reason: limitReached ? 'activation_limit' : 'invalid' }, 'license activation rejected');
-      return res.json({ valid: false, error: limitReached ? 'activation_limit' : 'invalid' });
-    }
-    licenses[subHash] = { licenseKey: key, instanceId, email: session.email || null, activatedAt: Date.now() };
-    saveLicenses();
-    req.log.info({ account: subHash }, 'license activated');
-    res.json({ valid: true });
-  } catch (err) {
-    req.log.error({ err, account: subHash }, 'license activation request failed');
-    res.status(503).json({ valid: false, error: 'unavailable' });
+  const { ok, error } = activateLicense(key, subHash);
+  if (!ok) {
+    req.log.warn({ account: subHash, reason: error }, 'license activation rejected');
+    return res.json({ valid: false, error });
   }
+  licenses[subHash] = { licenseKey: key, email: session.email || null, activatedAt: Date.now() };
+  saveLicenses();
+  req.log.info({ account: subHash }, 'license activated');
+  res.json({ valid: true });
 });
 
 // ── POST /api/license/deactivate ─────────────────────────────────────────────
 // Frees this account's activation slot. No body needed — the server already
 // knows which license belongs to this session.
-app.post('/api/license/deactivate', createLimiter.middleware(), async (req, res) => {
+app.post('/api/license/deactivate', createLimiter.middleware(), (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const session = readSession(req);
   if (!session) {
@@ -1281,12 +1408,10 @@ app.post('/api/license/deactivate', createLimiter.middleware(), async (req, res)
   if (!record) {
     return res.json({ ok: true });
   }
-  licenseCache.delete(`${record.licenseKey}:${record.instanceId}`);
   delete licenses[session.sub];
   saveLicenses();
   if (!(PRO_DEV_KEY && record.licenseKey === PRO_DEV_KEY)) {
-    try { await deactivateLicense(record.licenseKey, record.instanceId); }
-    catch (err) { req.log.error({ err, account: session.sub }, 'failed to deactivate license with Lemon Squeezy'); }
+    deactivateLicense(record.licenseKey, session.sub);
   }
   req.log.info({ account: session.sub }, 'license deactivated');
   res.json({ ok: true });
