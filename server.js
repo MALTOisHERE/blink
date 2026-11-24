@@ -1029,6 +1029,29 @@ function decryptWithK4(encCtB64, ctIvB64) {
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString('base64');
 }
 
+// Masks K2 with K3 and wraps the ciphertext with K4 - the two server-only
+// at-rest protections, both conditional on whether that key is actually
+// configured. Paired with openFromStorage() below, its exact inverse: this
+// used to be inlined separately in POST /api/secret while GET /api/secret/:id
+// already called unmaskK2()/decryptWithK4() as named functions - duplicating
+// the "is K3/K4 even on" branching on both sides instead of deciding it once.
+function sealForStorage(ciphertext, k2, id) {
+  let k2Stored = k2;
+  if (K3) {
+    const mask      = deriveK3Mask(id);
+    const k2Buf     = Buffer.from(k2, 'base64');
+    const maskedBuf = Buffer.alloc(32);
+    for (let i = 0; i < 32; i++) maskedBuf[i] = k2Buf[i] ^ mask[i];
+    k2Stored = maskedBuf.toString('base64');
+  }
+  let storedCt = ciphertext;
+  let ctIv     = null;
+  if (K4) {
+    ({ encCt: storedCt, ctIv } = encryptWithK4(ciphertext));
+  }
+  return { storedCt, ctIv, k2Stored };
+}
+
 // ── Email client ─────────────────────────────────────────────────────────────
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -1051,6 +1074,17 @@ function unmaskK2(k2StoredB64, id) {
   const k2 = Buffer.alloc(32);
   for (let i = 0; i < 32; i++) k2[i] = k2Stored[i] ^ mask[i];
   return k2.toString('base64');
+}
+
+// Exact inverse of sealForStorage() above - unwraps the ciphertext from K4
+// and unmasks K2 from K3. Throws (doesn't touch res/req itself - that's the
+// caller's job, same as any other deep module here) if the stored ciphertext
+// fails to unwrap, so GET /api/secret/:id can turn that into a clean 500
+// instead of either crashing or returning corrupted data.
+function openFromStorage(secret, id) {
+  const rawCt = (K4 && secret.ctIv) ? decryptWithK4(secret.ciphertext, secret.ctIv) : secret.ciphertext;
+  const k2 = unmaskK2(secret.k2, id);
+  return { ciphertext: rawCt, k2 };
 }
 
 // ── Email (Resend) ───────────────────────────────────────────────────────────
@@ -1436,22 +1470,7 @@ app.post('/api/secret', createLimiter.middleware(), async (req, res, next) => {
     }
   }
 
-  // Apply K3 mask to K2 before storage: k2Stored = K2 XOR HMAC(K3, id)
-  let k2Stored = k2;
-  if (K3) {
-    const mask     = deriveK3Mask(id);
-    const k2Buf    = Buffer.from(k2, 'base64');
-    const maskedBuf = Buffer.alloc(32);
-    for (let i = 0; i < 32; i++) maskedBuf[i] = k2Buf[i] ^ mask[i];
-    k2Stored = maskedBuf.toString('base64');
-  }
-
-  // Wrap ciphertext with K4 before storage — K4 is mandatory for any decryption
-  let storedCt = ciphertext;
-  let ctIv     = null;
-  if (K4) {
-    ({ encCt: storedCt, ctIv } = encryptWithK4(ciphertext));
-  }
+  const { storedCt, ctIv, k2Stored } = sealForStorage(ciphertext, k2, id);
 
   // Re-checked here, after the only await in this handler (the OTP email
   // send above) - see capacityExceeded()'s comment. A reject at this point
@@ -1605,18 +1624,16 @@ app.get('/api/secret/:id', readLimiter.middleware(), (req, res) => {
     }
   }
 
-  // Unwrap ciphertext from K4 and unmask K2 from K3 - both are server-only
-  // at-rest protections, unrelated to the AES-GCM key itself. The actual
-  // decrypt happens only in the recipient's browser, which already holds
-  // K1 and now receives K2 to combine with it.
-  let rawCt;
+  // The actual decrypt happens only in the recipient's browser, which
+  // already holds K1 and now receives K2 to combine with it.
+  let unsealed;
   try {
-    rawCt = (K4 && secret.ctIv) ? decryptWithK4(secret.ciphertext, secret.ctIv) : secret.ciphertext;
+    unsealed = openFromStorage(secret, id);
   } catch (err) {
     req.log.error({ err, secretId: idFragment(id) }, 'failed to unwrap stored ciphertext');
     return res.status(500).json({ error: 'Internal server error.' });
   }
-  const k2 = unmaskK2(secret.k2, id);
+  const { ciphertext: rawCt, k2 } = unsealed;
 
   const payload = secret.isFile
     ? { ciphertext: rawCt, iv: secret.iv, k2, isFile: true, filename: secret.filename, mimetype: secret.mimetype }
