@@ -3,7 +3,7 @@
 // ── Blink server ─────────────────────────────────────────────────────────────
 // Express app for the whole backend: creating/revealing view-once encrypted
 // secrets, the optional passphrase/email-OTP gates on a reveal, Pro
-// licensing (Lemon Squeezy) behind Google/GitHub sign-in, rate limiting, and
+// licensing (Polar) behind Google/GitHub sign-in, rate limiting, and
 // the in-memory store with graceful-restart snapshotting. See the README's
 // "Key architecture" section for the K1-K4 model this file implements; this
 // is the only place K3/K4 and the license store live. AES-GCM decryption
@@ -35,7 +35,7 @@ const app = express();
 const SENSITIVE_DIR_MODE  = 0o700;
 const SENSITIVE_FILE_MODE = 0o600;
 
-// Every call out to Lemon Squeezy/Google/GitHub below went through plain
+// Every call out to Polar/Google/GitHub below went through plain
 // fetch() with no timeout - if any of those ever hung (not even down, just
 // slow), the request handling it would hang right along with it, for as
 // long as the client stayed connected. AbortSignal.timeout() turns that
@@ -219,91 +219,109 @@ const freeUsageLimiter = new RateLimiter(86_400_000, parseInt(process.env.FREE_U
 // the limiters themselves are otherwise unrelated and bucket independently.
 const allRateLimiters = [createLimiter, readLimiter, emailLimiter, licenseUsageLimiter, freeUsageLimiter];
 
-// ── Blink Pro licensing (Lemon Squeezy + Google/GitHub Sign-In) ─────────────
-// The license key and its Lemon Squeezy instance ID live ONLY on the server,
-// keyed by a hash of the signed-in account's verified email — never in the
+// ── Blink Pro licensing (Polar + Google/GitHub Sign-In) ─────────────────────
+// Replaces Lemon Squeezy, which shuts down 2027-03-31 - its own replacement
+// (Stripe Managed Payments) doesn't support license keys at all, so this
+// needed a different vendor entirely, not just a payments swap.
+// The license key and its Polar activation id live ONLY on the server, keyed
+// by a hash of the signed-in account's verified email — never in the
 // browser. The browser only ever holds a signed session cookie proving "this
 // email is logged in right now." Keying by email (rather than a
 // provider-specific account ID) is deliberate: it's what makes Google and
 // GitHub sign-in resolve to the SAME Pro account whenever both are verified
 // for the same address. Two different emails are, correctly, two different
 // accounts — no linking happens unless the email itself matches.
-// A raw license key + instance ID pasted into a chat is just two
-// copy-pasteable strings; a live OAuth login is not something people hand
-// out the same way, which is what actually stops casual key sharing.
-// Set the Lemon Squeezy product's Activation Limit to 1 so a key can only
-// ever be bound to one account (one email) at a time.
-const LS_STORE_ID    = process.env.LS_STORE_ID   ? Number(process.env.LS_STORE_ID)   : null;
-const LS_PRODUCT_ID  = process.env.LS_PRODUCT_ID ? Number(process.env.LS_PRODUCT_ID) : null;
+// A raw license key pasted into a chat is just a copy-pasteable string; a
+// live OAuth login is not something people hand out the same way, which is
+// what actually stops casual key sharing.
+// Set the Polar license-key benefit's activation limit to 1 so a key can
+// only ever be bound to one account (one email) at a time.
+const POLAR_ORGANIZATION_ID = process.env.POLAR_ORGANIZATION_ID || null;
+const POLAR_ACCESS_TOKEN    = process.env.POLAR_ACCESS_TOKEN    || null;
+const POLAR_BENEFIT_ID      = process.env.POLAR_BENEFIT_ID      || null;
+const POLAR_API_BASE        = 'https://api.polar.sh';
 const PRO_DEV_KEY    = process.env.BLINK_PRO_DEV_KEY || null;
 // Site owner allowlist — these accounts (by email, either sign-in provider)
-// always have Pro, no license or Lemon Squeezy involved. Safer than a shared
+// always have Pro, no license or Polar purchase involved. Safer than a shared
 // bearer key for this: even if the env var leaked, it only grants Pro to a
 // specific real, provider-verified email, not to anyone who happens to read
 // the value. Comma-separated in OWNER_EMAILS.
 const OWNER_EMAILS = new Set(
   (process.env.OWNER_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 );
-const LICENSE_KEY_RE      = /^[A-Za-z0-9-]{8,64}$/;
-const LICENSE_INSTANCE_RE = /^[A-Za-z0-9-]{1,64}$/;
+const LICENSE_KEY_RE = /^[A-Za-z0-9-]{8,64}$/;
 const LICENSE_CACHE_TTL = 3_600_000; // 1 hour
-const licenseCache = new Map(); // "key:instanceId" -> { valid, exp }
+const licenseCache = new Map(); // "key:activationId" -> { valid, exp }
 
-// The next three functions are thin wrappers around Lemon Squeezy's hosted
-// license API (activate/deactivate/validate a key against their servers) -
-// this app never stores or checks license validity on its own.
-function licenseMetaMatches(data) {
-  return (!LS_STORE_ID   || data?.meta?.store_id   === LS_STORE_ID)
-      && (!LS_PRODUCT_ID || data?.meta?.product_id === LS_PRODUCT_ID);
+// The next three functions are thin wrappers around Polar's hosted License
+// Keys API (activate/deactivate/validate a key against their servers) - this
+// app never stores or checks license validity on its own. activate/deactivate
+// go through Polar's public customer-portal endpoints (no API token needed -
+// the license key itself is the credential, same trust model Lemon Squeezy's
+// license API used); validate uses the authenticated server-side endpoint,
+// as Polar's own docs recommend for server-side checks.
+function licenseBenefitMatches(data) {
+  return !POLAR_BENEFIT_ID || data?.benefit_id === POLAR_BENEFIT_ID;
 }
 
-async function activateLicense(key, instanceName) {
-  const resp = await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/activate', {
+async function activateLicense(key, label) {
+  const resp = await fetchWithTimeout(`${POLAR_API_BASE}/v1/customer-portal/license-keys/activate`, {
     method:  'POST',
     headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ license_key: key, instance_name: instanceName }),
+    body:    JSON.stringify({ key, organization_id: POLAR_ORGANIZATION_ID, label }),
   });
-  const data   = await resp.json();
-  const status = data?.license_key?.status;
-  const ok = data?.activated === true
-    && status !== 'expired' && status !== 'disabled'
-    && licenseMetaMatches(data);
-  return { ok, instanceId: data?.instance?.id || null, error: data?.error || null };
+  if (!resp.ok) {
+    // Polar returns 403 for a revoked/disabled/expired key or one already at
+    // its activation limit, and 404 for a key that doesn't exist - it
+    // doesn't document a machine-readable way to tell those apart, so this
+    // is a best-effort read of the human-readable detail, same spirit as
+    // the Lemon Squeezy integration this replaced.
+    const data = await resp.json().catch(() => ({}));
+    const detail = typeof data?.detail === 'string' ? data.detail : '';
+    return { ok: false, activationId: null, error: /limit/i.test(detail) ? 'activation_limit' : 'invalid' };
+  }
+  const data = await resp.json();
+  return { ok: true, activationId: data.id, error: null };
 }
 
-async function deactivateLicense(key, instanceId) {
-  await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/deactivate', {
+async function deactivateLicense(key, activationId) {
+  await fetchWithTimeout(`${POLAR_API_BASE}/v1/customer-portal/license-keys/deactivate`, {
     method:  'POST',
     headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ license_key: key, instance_id: instanceId }),
+    body:    JSON.stringify({ key, organization_id: POLAR_ORGANIZATION_ID, activation_id: activationId }),
   });
 }
 
-async function checkLicenseInstance(key, instanceId) {
+async function checkLicenseInstance(key, activationId) {
   if (typeof key !== 'string' || !LICENSE_KEY_RE.test(key)) return false;
   if (PRO_DEV_KEY && key === PRO_DEV_KEY) return true;
-  if (typeof instanceId !== 'string' || !LICENSE_INSTANCE_RE.test(instanceId)) return false;
+  if (typeof activationId !== 'string' || !UUID_RE.test(activationId)) return false;
 
-  const cacheKey = `${key}:${instanceId}`;
+  const cacheKey = `${key}:${activationId}`;
   const cached = licenseCache.get(cacheKey);
   if (cached && Date.now() < cached.exp) return cached.valid;
 
   let valid = false;
   try {
-    const resp = await fetchWithTimeout('https://api.lemonsqueezy.com/v1/licenses/validate', {
+    const resp = await fetchWithTimeout(`${POLAR_API_BASE}/v1/license-keys/validate`, {
       method:  'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ license_key: key, instance_id: instanceId }),
+      headers: {
+        'Accept':        'application/json',
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${POLAR_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify({ key, organization_id: POLAR_ORGANIZATION_ID, activation_id: activationId }),
     });
-    const data   = await resp.json();
-    const status = data?.license_key?.status;
-    valid = data?.valid === true
-      && !!data?.instance
-      && status !== 'expired' && status !== 'disabled'
-      && licenseMetaMatches(data);
+    if (resp.ok) {
+      const data = await resp.json();
+      // "granted" is the only status value Polar's schema allows here - a
+      // revoked/disabled/expired/mismatched key comes back as a 404 instead
+      // of a 200 with some other status, so resp.ok already covers that.
+      valid = data?.status === 'granted' && licenseBenefitMatches(data);
+    }
   } catch (err) {
     logger.error({ err, licenseFragment: key.slice(-6) }, 'license validation request failed');
-    // Lemon Squeezy unreachable: honour a stale cache entry rather than lock out a paying user
+    // Polar unreachable: honour a stale cache entry rather than lock out a paying user
     if (cached) return cached.valid;
     return false;
   }
@@ -316,7 +334,7 @@ async function checkLicenseInstance(key, instanceId) {
 }
 
 // ── Persistent license store, keyed by a hash of the account's verified email ──
-// { [sha256(email.toLowerCase())]: { licenseKey, instanceId, email, activatedAt } }
+// { [sha256(email.toLowerCase())]: { licenseKey, activationId, email, activatedAt } }
 // Never sent to the browser — only the session cookie is. Mirrors the
 // STATS_FILE persistence pattern already used elsewhere in this file.
 const LICENSES_FILE = process.env.LICENSES_FILE || path.join(__dirname, 'data', 'licenses.json');
@@ -473,7 +491,7 @@ async function isProForSession(session) {
   if (session.email && OWNER_EMAILS.has(session.email.toLowerCase())) return true;
   const record = licenses[session.sub];
   if (!record) return false;
-  return checkLicenseInstance(record.licenseKey, record.instanceId);
+  return checkLicenseInstance(record.licenseKey, record.activationId);
 }
 
 // ── Google OAuth (server-side redirect flow — no client-side Google JS SDK,
@@ -1197,9 +1215,9 @@ async function sendViewNotification(to, viewsLeft, id) {
 
 // ── POST /api/license/activate ───────────────────────────────────────────────
 // Requires a verified session (Google or GitHub). Binds the submitted key to
-// THIS account's email — the Lemon Squeezy product's Activation Limit (set
-// to 1) enforces that no other account can ever activate the same key. The
-// key and instance ID are stored server-side only; the browser never
+// THIS account's email — the Polar license-key benefit's activation limit
+// (set to 1) enforces that no other account can ever activate the same key.
+// The key and activation id are stored server-side only; the browser never
 // receives them.
 app.post('/api/license/activate', createLimiter.middleware(), jsonSmall, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -1217,7 +1235,7 @@ app.post('/api/license/activate', createLimiter.middleware(), jsonSmall, async (
   const existing = licenses[subHash];
 
   if (PRO_DEV_KEY && key === PRO_DEV_KEY) {
-    licenses[subHash] = { licenseKey: key, instanceId: 'dev', email: session.email || null, activatedAt: Date.now() };
+    licenses[subHash] = { licenseKey: key, activationId: 'dev', email: session.email || null, activatedAt: Date.now() };
     saveLicenses();
     req.log.info({ account: subHash, dev: true }, 'license activated');
     return res.json({ valid: true });
@@ -1231,21 +1249,20 @@ app.post('/api/license/activate', createLimiter.middleware(), jsonSmall, async (
 
   // Switching to a different key: free the old slot first (best-effort).
   if (existing) {
-    try { await deactivateLicense(existing.licenseKey, existing.instanceId); }
+    try { await deactivateLicense(existing.licenseKey, existing.activationId); }
     catch (err) { req.log.error({ err, account: subHash }, 'failed to deactivate previous license before switching keys'); }
     delete licenses[subHash];
     req.log.info({ account: subHash }, 'license deactivated (switching keys)');
   }
 
   try {
-    const { ok, instanceId, error } = await activateLicense(key, `account-${subHash}`);
+    const { ok, activationId, error } = await activateLicense(key, `account-${subHash}`);
     if (!ok) {
       saveLicenses();
-      const limitReached = /activation limit/i.test(error || '');
-      req.log.warn({ account: subHash, reason: limitReached ? 'activation_limit' : 'invalid' }, 'license activation rejected');
-      return res.json({ valid: false, error: limitReached ? 'activation_limit' : 'invalid' });
+      req.log.warn({ account: subHash, reason: error }, 'license activation rejected');
+      return res.json({ valid: false, error });
     }
-    licenses[subHash] = { licenseKey: key, instanceId, email: session.email || null, activatedAt: Date.now() };
+    licenses[subHash] = { licenseKey: key, activationId, email: session.email || null, activatedAt: Date.now() };
     saveLicenses();
     req.log.info({ account: subHash }, 'license activated');
     res.json({ valid: true });
@@ -1268,12 +1285,12 @@ app.post('/api/license/deactivate', createLimiter.middleware(), async (req, res)
   if (!record) {
     return res.json({ ok: true });
   }
-  licenseCache.delete(`${record.licenseKey}:${record.instanceId}`);
+  licenseCache.delete(`${record.licenseKey}:${record.activationId}`);
   delete licenses[session.sub];
   saveLicenses();
   if (!(PRO_DEV_KEY && record.licenseKey === PRO_DEV_KEY)) {
-    try { await deactivateLicense(record.licenseKey, record.instanceId); }
-    catch (err) { req.log.error({ err, account: session.sub }, 'failed to deactivate license with Lemon Squeezy'); }
+    try { await deactivateLicense(record.licenseKey, record.activationId); }
+    catch (err) { req.log.error({ err, account: session.sub }, 'failed to deactivate license with Polar'); }
   }
   req.log.info({ account: session.sub }, 'license deactivated');
   res.json({ ok: true });
@@ -1724,8 +1741,10 @@ if (process.env.NODE_ENV !== 'test') {
   if (!process.env.RESEND_API_KEY) {
     logger.warn('RESEND_API_KEY not set: email OTP feature is disabled');
   }
-  if (!process.env.LS_STORE_ID || !process.env.LS_PRODUCT_ID) {
-    logger.warn('LS_STORE_ID / LS_PRODUCT_ID not set: Lemon Squeezy keys from ANY store would validate, Pro effectively limited to BLINK_PRO_DEV_KEY');
+  if (!process.env.POLAR_ORGANIZATION_ID || !process.env.POLAR_ACCESS_TOKEN) {
+    logger.warn('POLAR_ORGANIZATION_ID / POLAR_ACCESS_TOKEN not set: license activation and validation will fail, Pro effectively limited to BLINK_PRO_DEV_KEY');
+  } else if (!process.env.POLAR_BENEFIT_ID) {
+    logger.warn('POLAR_BENEFIT_ID not set: license keys from ANY benefit in this Polar organization would validate');
   }
   if (!GOOGLE_AUTH_CONFIGURED) {
     logger.warn('Google sign-in not fully configured (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI/SESSION_SECRET): Google Pro sign-in is disabled');
