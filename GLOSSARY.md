@@ -99,7 +99,7 @@ An email listed in `OWNER_EMAILS`, always treated as Pro with no license key or 
 _Avoid_: admin, superuser
 
 **License**:
-A Lemon Squeezy-issued key a Pro account activates once to unlock Pro features, bound to exactly one signed-in account (Activation Limit = 1).
+A Blink-issued key, minted when a Paddle subscription activates, that a Pro account activates once to unlock Pro features, bound to exactly one signed-in account.
 _Avoid_: subscription, token
 
 ### Browser extension

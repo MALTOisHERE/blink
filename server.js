@@ -36,11 +36,11 @@ const app = express();
 const SENSITIVE_DIR_MODE  = 0o700;
 const SENSITIVE_FILE_MODE = 0o600;
 
-// Every call out to Lemon Squeezy/Google/GitHub below went through plain
-// fetch() with no timeout - if any of those ever hung (not even down, just
-// slow), the request handling it would hang right along with it, for as
-// long as the client stayed connected. AbortSignal.timeout() turns that
-// into a bounded, catchable error instead.
+// Every call out to Google/GitHub below went through plain fetch() with no
+// timeout - if any of those ever hung (not even down, just slow), the
+// request handling it would hang right along with it, for as long as the
+// client stayed connected. AbortSignal.timeout() turns that into a bounded,
+// catchable error instead.
 const EXTERNAL_API_TIMEOUT_MS = 8_000;
 function fetchWithTimeout(url, options = {}) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS) });
@@ -1869,8 +1869,8 @@ if (process.env.NODE_ENV !== 'test') {
   if (!process.env.RESEND_API_KEY) {
     logger.warn('RESEND_API_KEY not set: email OTP feature is disabled');
   }
-  if (!process.env.LS_STORE_ID || !process.env.LS_PRODUCT_ID) {
-    logger.warn('LS_STORE_ID / LS_PRODUCT_ID not set: Lemon Squeezy keys from ANY store would validate, Pro effectively limited to BLINK_PRO_DEV_KEY');
+  if (!process.env.PADDLE_API_KEY || !process.env.PADDLE_WEBHOOK_SECRET) {
+    logger.warn('PADDLE_API_KEY / PADDLE_WEBHOOK_SECRET not set: Paddle webhook disabled, Pro effectively limited to BLINK_PRO_DEV_KEY');
   }
   if (!GOOGLE_AUTH_CONFIGURED) {
     logger.warn('Google sign-in not fully configured (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI/SESSION_SECRET): Google Pro sign-in is disabled');

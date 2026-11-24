@@ -60,9 +60,9 @@
     })
     .catch(() => {});
 
-  // Pro is gated by a Google-verified session, not a client-held key. The
-  // license key and its Lemon Squeezy instance ID live only on the server
-  // (see server.js); the browser just carries a session cookie automatically
+  // Pro is gated by a Google/GitHub-verified session, not a client-held key.
+  // The license key itself lives only on the server (see server.js); the
+  // browser just carries a session cookie automatically
   // on same-origin requests. This is what stops casual key sharing — a raw
   // key pasted into a chat is useless without also being the signed-in
   // Google account it's bound to.
