@@ -27,7 +27,7 @@
     },
     {
       "files": ["public/app.js"],
-      "globals": { "qrcode": "readonly" }
+      "globals": { "qrcode": "readonly", "Paddle": "readonly" }
     },
     {
       "files": ["extension/**/*.js"],

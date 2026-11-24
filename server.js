@@ -149,7 +149,12 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options',            'DENY');
   res.setHeader('X-XSS-Protection',           '0');
   res.setHeader('Referrer-Policy',            'no-referrer');
-  res.setHeader('Permissions-Policy',         'camera=(), microphone=(), geolocation=(), payment=()');
+  // The homepage alone needs the Payment Request API available to delegate
+  // into Paddle's checkout iframe (Apple Pay/Google Pay buttons) - every
+  // other page keeps payment fully disabled.
+  res.setHeader('Permissions-Policy', req.path === '/'
+    ? 'camera=(), microphone=(), geolocation=(), payment=(self)'
+    : 'camera=(), microphone=(), geolocation=(), payment=()');
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin');
   // COEP requires every cross-origin resource (including an <iframe>) to
   // send a matching header back, which youtube-nocookie.com's embed does
@@ -161,23 +166,31 @@ app.use((req, res, next) => {
     res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
   }
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  // Paddle Checkout (the "Get Pro" button) is the one script/frame this site
+  // ever loads from a third party, and it only lives on the homepage - every
+  // other page keeps the fully self-hosted script-src/frame-src. cdn.paddle.com
+  // serves Paddle.js itself; the checkout iframe it opens is served from
+  // Paddle's own domain, which Paddle does not publish a single fixed
+  // hostname for, so this allows the whole *.paddle.com family rather than
+  // guessing one subdomain that could change without notice.
+  const isHomepage = req.path === '/';
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'none'",
-      "script-src 'self'",
+      `script-src 'self'${isHomepage ? ' https://cdn.paddle.com' : ''}`,
       "style-src 'self'",
       "font-src 'self'",
       `img-src 'self' data:${LOGO_ORIGIN ? ` ${LOGO_ORIGIN}` : ''}`,
       // api.github.com is called client-side by github-stars.js, straight
       // from each visitor's own browser - never through this server.
-      "connect-src 'self' https://api.github.com",
+      `connect-src 'self' https://api.github.com${isHomepage ? ' https://*.paddle.com' : ''}`,
       "manifest-src 'self'",
       "worker-src 'self'",
       // The about page's demo video is the one embedded frame on the site -
       // youtube-nocookie.com is YouTube's privacy-enhanced embed domain
       // (no tracking cookies until playback actually starts).
-      "frame-src https://www.youtube-nocookie.com",
+      `frame-src https://www.youtube-nocookie.com${isHomepage ? ' https://*.paddle.com' : ''}`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -1642,11 +1655,18 @@ app.get('/api/secret/:id', readLimiter.middleware(), (req, res) => {
 });
 
 // ── GET /api/config ──────────────────────────────────────────────────────────
-// Public frontend configuration. The checkout URL is not a secret (it is a
-// public payment page) — env keeps it configurable per deployment.
+// Public frontend configuration. The client-side token is not a secret - it
+// can only open a Paddle checkout, never read account data or move money on
+// its own (that needs PADDLE_API_KEY, which never leaves the server). Env
+// keeps it configurable per deployment.
 app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ proCheckoutUrl: process.env.PRO_CHECKOUT_URL || null, version: APP_VERSION });
+  res.json({
+    paddleClientToken: process.env.PADDLE_CLIENT_TOKEN || null,
+    paddlePriceId:     process.env.PADDLE_PRICE_ID     || null,
+    paddleEnv:         process.env.PADDLE_ENV          || 'production',
+    version: APP_VERSION,
+  });
 });
 
 // ── GET /api/stats ───────────────────────────────────────────────────────────
