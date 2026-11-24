@@ -627,7 +627,6 @@
     showSuccess('Blink Pro activated. All Pro features are unlocked.');
   });
 
-  // eslint-disable-next-line complexity, max-lines-per-function -- tracked debt: mirrors server.js's POST /api/secret validation/Pro-gating shape on the client side, same reasoning (see server.js's top-of-file comment)
   btnCreate.addEventListener('click', async () => {
     if (linkPending) {
       const discard = await confirmDiscard(

@@ -19,12 +19,6 @@
   "ignorePatterns": ["node_modules/", "public/qrcode.min.js"],
   "overrides": [
     {
-      "files": ["server.js"],
-      "rules": {
-        "max-lines": "off"
-      }
-    },
-    {
       "files": ["test/**/*.js"],
       "rules": {
         "max-lines-per-function": "off"
