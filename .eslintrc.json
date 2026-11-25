@@ -11,10 +11,19 @@
     "eqeqeq": ["error", "always"],
     "no-empty": ["error", { "allowEmptyCatch": true }],
     "security/detect-object-injection": "off",
-    "security/detect-non-literal-fs-filename": "off"
+    "security/detect-non-literal-fs-filename": "off",
+    "complexity": ["error", 20],
+    "max-lines-per-function": ["error", { "max": 90, "skipBlankLines": true, "skipComments": true }],
+    "max-lines": ["error", { "max": 750, "skipBlankLines": true, "skipComments": true }]
   },
   "ignorePatterns": ["node_modules/", "public/qrcode.min.js"],
   "overrides": [
+    {
+      "files": ["test/**/*.js"],
+      "rules": {
+        "max-lines-per-function": "off"
+      }
+    },
     {
       "files": ["public/**/*.js"],
       "env": { "browser": true, "node": false, "es2022": true, "serviceworker": true },

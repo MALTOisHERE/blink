@@ -12,7 +12,12 @@ const mockResend = http.createServer((req, res) => {
     res.end(JSON.stringify({ id: 'mock-email-id' }));
   });
 });
-const MOCK_RESEND_PORT = 58733;
+// Picked to avoid Windows' Hyper-V/WSL dynamic port exclusion ranges
+// (`netsh interface ipv4 show excludedportrange protocol=tcp`), which shift
+// over time and had previously swallowed ports in the high-58000s on this
+// class of machine, failing this test's own listen() with EACCES - nothing
+// to do with the code under test.
+const MOCK_RESEND_PORT = 39733;
 mockResend.listen(MOCK_RESEND_PORT, '127.0.0.1');
 
 process.env.NODE_ENV              = 'test';

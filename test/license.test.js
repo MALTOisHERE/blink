@@ -168,6 +168,14 @@ describe('Pro-gated secret features', () => {
     assert.equal(res.body.feature, '7-day expiry');
   });
 
+  test('an out-of-range passphrase length is rejected even for Pro', async () => {
+    const agent = await proAgent();
+    const { payload } = makePayload();
+    const res = await agent.post('/api/secret').send({ ...payload, passphrase: 'ab' });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /Passphrase must be \d+-\d+ characters\./);
+  });
+
   test('a Pro account can create a 7-day, multi-view secret', async () => {
     const agent = await proAgent();
     const { payload } = makePayload();
