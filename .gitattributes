@@ -1,0 +1,14 @@
+# Normalize line endings to LF in the repository for every text file,
+# regardless of what a given checkout's core.autocrlf is set to - this
+# project deploys to Linux (Docker on the VPS), so LF is the one that
+# actually matters; a Windows checkout can still show CRLF locally without
+# that ever touching what's committed.
+* text=auto eol=lf
+
+# Known binary types - never touched by line-ending normalization, listed
+# explicitly so a future file of these types doesn't depend on Git's
+# content-sniffing guessing right.
+*.png   binary
+*.woff2 binary
+*.gz    binary
+*.zip   binary
