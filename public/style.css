@@ -1668,7 +1668,7 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
    stretches into one huge, mostly-empty glass panel. The OTP/passphrase
    entry card (.otp-card) is kept full-width on purpose, not an oversight. */
 .reveal-card, .secret-card, .expired-card, .cleared-card, .file-reveal-card {
-  max-width: 480px;
+  max-width: 640px;
   margin: 0 auto;
 }
 
