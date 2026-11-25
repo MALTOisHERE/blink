@@ -2,6 +2,25 @@
 
 All notable changes to Blink, generated automatically from commit history on every release.
 
+## v2.1.1 - 2026-11-25
+
+### Bug Fixes
+
+- Widen reveal/secret/expired cards from 480px to 640px
+
+
+### Chores
+
+- Add .gitattributes to pin LF line endings
+
+- Adopt /ub-mode practice, decompose isValidSnapshotEntry (#3)
+
+
+### Documentation
+
+- Regenerate changelog for v2.1.0
+
+
 ## v2.1.0 - 2026-11-23
 
 ### Bug Fixes
