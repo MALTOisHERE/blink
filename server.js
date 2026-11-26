@@ -173,14 +173,18 @@ app.use((req, res, next) => {
   // serves Paddle.js itself; the checkout iframe it opens is served from
   // Paddle's own domain, which Paddle does not publish a single fixed
   // hostname for, so this allows the whole *.paddle.com family rather than
-  // guessing one subdomain that could change without notice.
+  // guessing one subdomain that could change without notice. Paddle.js also
+  // positions/styles that overlay iframe via inline style="" attributes and
+  // an injected <style> tag (confirmed via securitypolicyviolation events,
+  // not guessed) - without 'unsafe-inline' here the checkout silently
+  // renders unstyled at the bottom of the page instead of as an overlay.
   const isHomepage = req.path === '/';
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'none'",
       `script-src 'self'${isHomepage ? ' https://cdn.paddle.com' : ''}`,
-      "style-src 'self'",
+      `style-src 'self'${isHomepage ? " 'unsafe-inline'" : ''}`,
       "font-src 'self'",
       `img-src 'self' data:${LOGO_ORIGIN ? ` ${LOGO_ORIGIN}` : ''}`,
       // api.github.com is called client-side by github-stars.js, straight
