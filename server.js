@@ -1816,6 +1816,18 @@ app.get('/privacy', readLimiter.middleware(), (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
 });
 
+// ── Terms of Service page ───────────────────────────────────────────────────
+app.get('/terms', readLimiter.middleware(), (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', 'terms.html'));
+});
+
+// ── Refund policy page ──────────────────────────────────────────────────────
+app.get('/refund', readLimiter.middleware(), (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', 'refund.html'));
+});
+
 // ── Changelog page ─────────────────────────────────────────────────────────
 app.get('/changelog', readLimiter.middleware(), (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
