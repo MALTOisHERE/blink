@@ -78,7 +78,7 @@
           <li><strong>Ciphertext, IV, and masked key half:</strong> held in server memory only (never written to disk), for as long as the secret is unviewed and unexpired. Deleted immediately on first view, or automatically purged at your chosen expiry.</li>
           <li><strong>Recipient email (optional):</strong> if you use the "lock to a recipient" feature, that address is used once to send a one-time verification code via our email provider, Resend. It is not kept beyond the secret's lifetime and is never added to a mailing list.</li>
           <li><strong>Google or GitHub sign-in (optional, Pro):</strong> we store a one-way hash of your verified email address, plus the address itself, solely to tie a Pro license to your account. Signing in with Google and with GitHub using the same email resolves to the same account and the same license; different emails are different accounts. We never receive or request your Google or GitHub password.</li>
-          <li><strong>Payment details (optional, Pro):</strong> handled entirely by Lemon Squeezy. Blink's own server never receives your card number or billing details.</li>
+          <li><strong>Payment details (optional, Pro):</strong> handled entirely by Paddle. Blink's own server never receives your card number or billing details.</li>
           <li><strong>IP address:</strong> used transiently for rate limiting (to stop abuse), not logged or stored.</li>
         </ul>
       </section>
@@ -99,7 +99,7 @@
         <h2 class="about-section-title">4. Third parties we rely on</h2>
         <ul>
           <li><strong>Resend</strong>, for sending one-time email codes (only when you use that optional feature).</li>
-          <li><strong>Lemon Squeezy</strong>, for processing Pro subscription payments and license validation.</li>
+          <li><strong>Paddle</strong>, for processing Pro subscription payments.</li>
           <li><strong>Google</strong>, only if you choose to sign in for Pro.</li>
         </ul>
         <p>None of these receive your secret's plaintext, and none are used for advertising or tracking.</p>
@@ -119,7 +119,7 @@
 
     <footer class="footer">
       <div class="footer-inner">
-        Blink <span id="app-version"></span> &nbsp; &middot; &nbsp; Secrets never stored in plaintext &nbsp; &middot; &nbsp; <a href="/about" class="footer-link">About</a> &nbsp; &middot; &nbsp; <a href="/privacy" class="footer-link">Privacy</a> &nbsp; &middot; &nbsp; <a href="/changelog" class="footer-link">Changelog</a> &nbsp; &middot; &nbsp; Made with &hearts; by <span class="footer-logo" aria-hidden="true"></span><a href="https://github.com/MALTOisHERE" target="_blank" rel="noopener noreferrer" class="footer-link">MALTO</a>
+        Blink <span id="app-version"></span> &nbsp; &middot; &nbsp; Secrets never stored in plaintext &nbsp; &middot; &nbsp; <a href="/about" class="footer-link">About</a> &nbsp; &middot; &nbsp; <a href="/privacy" class="footer-link">Privacy</a> &nbsp; &middot; &nbsp; <a href="/terms" class="footer-link">Terms</a> &nbsp; &middot; &nbsp; <a href="/refund" class="footer-link">Refund</a> &nbsp; &middot; &nbsp; <a href="/changelog" class="footer-link">Changelog</a> &nbsp; &middot; &nbsp; Made with &hearts; by <span class="footer-logo" aria-hidden="true"></span><a href="https://github.com/MALTOisHERE" target="_blank" rel="noopener noreferrer" class="footer-link">MALTO</a>
       </div>
     </footer>
   </div>

@@ -2,8 +2,8 @@
 
 // ── Public config endpoint ───────────────────────────────────────────────────
 // GET /api/config: the frontend's only source for the app version and the
-// Pro checkout URL. No session, no secrets - just confirms the shape and
-// the no-store cache header.
+// Paddle checkout config (client token + price id). No session, no secrets -
+// just confirms the shape and the no-store cache header.
 process.env.NODE_ENV   = 'test';
 process.env.SECRET_KEY = 'test-hmac-secret-key-for-k3';
 process.env.CIPHER_KEY = 'deadbeef'.repeat(8);
@@ -14,11 +14,12 @@ const request            = require('supertest');
 const { app }            = require('../server');
 
 describe('GET /api/config', () => {
-  test('returns the app version and a null checkout url by default', async () => {
+  test('returns the app version and null Paddle checkout config by default', async () => {
     const res = await request(app).get('/api/config');
     assert.equal(res.status, 200);
     assert.equal(typeof res.body.version, 'string');
-    assert.equal(res.body.proCheckoutUrl, null);
+    assert.equal(res.body.paddleClientToken, null);
+    assert.equal(res.body.paddlePriceId, null);
   });
 
   test('sets Cache-Control: no-store', async () => {
