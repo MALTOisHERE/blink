@@ -1,9 +1,8 @@
 'use strict';
 
 // ── License activate/deactivate + Pro-gated secret features ─────────────────
-// Covers the dev-key activation path end to end (no real Paddle calls - see
-// test/paddle-webhooks.test.js for the webhook-issued-key path), then every
-// Pro-only option on POST /api/secret - passphrase,
+// Covers the dev-key activation path end to end (no real Lemon Squeezy
+// calls), then every Pro-only option on POST /api/secret - passphrase,
 // multi-view, 7-day expiry, view notifications - confirming each is
 // rejected for a free account and works once Pro is activated.
 process.env.NODE_ENV       = 'test';

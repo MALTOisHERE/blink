@@ -41,28 +41,22 @@
   }
 
   // ── Pro license state ──────────────────────────────────────────────────────
-  // Checkout config (price id + a public client-side token - safe to expose,
-  // it can only open a checkout, never read or move money on its own) comes
-  // from the server so deployments configure their own Paddle account
-  // without touching code. Paddle.Initialize() may only be called once per
-  // page, so this is the one place it happens.
-  let paddlePriceId = null;
+  // Checkout URL comes from the server (PRO_CHECKOUT_URL env) so deployments
+  // configure their own store without touching code.
+  let proCheckoutUrl = null;
   fetch('/api/config')
     .then(r => r.json())
     .then(cfg => {
-      paddlePriceId = cfg.paddlePriceId || null;
-      if (!paddlePriceId || !cfg.paddleClientToken || typeof Paddle === 'undefined') {
+      proCheckoutUrl = cfg.proCheckoutUrl || null;
+      if (!proCheckoutUrl) {
         document.getElementById('pro-modal-buy')?.classList.add('hidden');
-        return;
       }
-      if (cfg.paddleEnv === 'sandbox') Paddle.Environment.set('sandbox');
-      Paddle.Initialize({ token: cfg.paddleClientToken });
     })
     .catch(() => {});
 
-  // Pro is gated by a Google/GitHub-verified session, not a client-held key.
-  // The license key itself lives only on the server (see server.js); the
-  // browser just carries a session cookie automatically
+  // Pro is gated by a Google-verified session, not a client-held key. The
+  // license key and its Lemon Squeezy instance ID live only on the server
+  // (see server.js); the browser just carries a session cookie automatically
   // on same-origin requests. This is what stops casual key sharing — a raw
   // key pasted into a chat is useless without also being the signed-in
   // Google account it's bound to.
@@ -594,12 +588,7 @@
   document.getElementById('result-close').addEventListener('click', closeResult);
   resultOverlay.addEventListener('click', e => { if (e.target === resultOverlay) closeResult(); });
   document.getElementById('pro-modal-buy').addEventListener('click', () => {
-    if (!paddlePriceId) return;
-    // Paddle collects the buyer's email itself during checkout - Blink
-    // never needs it up front. The purchase isn't linked to this browser's
-    // signed-in account at all; that happens afterwards, when the emailed
-    // license key gets pasted into this same modal (see activateLicense()).
-    Paddle.Checkout.open({ items: [{ priceId: paddlePriceId, quantity: 1 }] });
+    if (proCheckoutUrl) window.open(proCheckoutUrl, '_blank', 'noopener');
   });
   document.getElementById('pro-sign-out').addEventListener('click', signOutOfGoogle);
   document.getElementById('btn-pro-cta').addEventListener('click', () => {
